@@ -1,0 +1,145 @@
+{{define "content"}}
+<div class="exam-container">
+    <div class="exam-header">
+        <span class="badge">Question {{.CurrentIndex}} of {{.Total}}</span>
+        <div class="progress-bar">
+            <div class="progress" style="width: calc(({{.CurrentIndex}} / {{.Total}}) * 100%)"></div>
+        </div>
+    </div>
+
+    <div class="question-card">
+        <h2 class="question-text">{{.Question.Text}}</h2>
+
+        <form action="/exam/{{.SessionID}}/answer" method="POST" class="options-form">
+            <input type="hidden" name="question_id" value="{{.Question.ID}}">
+            <input type="hidden" name="current_index" value="{{.CurrentIndex}}">
+
+            <div class="options-grid">
+                {{$qType := .Question.Type}}
+                {{range .Question.Options}}
+                <label class="option-card">
+                    <input type="{{if le (len $qType) 7}}radio{{else}}checkbox{{end}}" name="option_id" value="{{.ID}}"
+                        required>
+                    <span class="option-content">
+                        <span class="option-text">{{.Text}}</span>
+                    </span>
+                </label>
+                {{end}}
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn-api primary" id="submit-btn">
+                    {{if eq .CurrentIndex .Total}}Finish Exam{{else}}Next Question{{end}}
+                </button>
+            </div>
+            <p id="selection-error" style="color: red; display: none; margin-top: 10px;"></p>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.querySelector('.options-form');
+        const inputs = form.querySelectorAll('input[name="option_id"]');
+        const submitBtn = document.getElementById('submit-btn');
+        const errorMsg = document.getElementById('selection-error');
+        const questionText = document.querySelector('.question-text').innerText;
+        // Use not-equal single to match template logic and be robust against whitespace or other types
+        const isMultiple = "{{.Question.Type}}" !== "single";
+
+        console.log("Question Type:", "{{.Question.Type}}");
+        console.log("Is Multiple:", isMultiple);
+        console.log("Question Text:", questionText);
+
+        // Default to 2 if multiple, because nearly all CLF multiple choice are "Choose two".
+        // If we parse something else, we overwrite it.
+        let requiredCount = isMultiple ? 2 : 1;
+
+        if (isMultiple) {
+            // Try to parse "Choose two", "Select two", "Choose 2", etc.
+            const match = questionText.match(/(?:choose|select)\s+(\w+)/i);
+            if (match) {
+                const numStr = match[1].toLowerCase();
+                const map = {
+                    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+                    '1': 1, '2': 2, '3': 3, '4': 4, '5': 5
+                };
+                if (map[numStr]) {
+                    requiredCount = map[numStr];
+                    console.log("Parsed requiredCount from question text:", requiredCount);
+                } else {
+                    console.log("Could not map parsed number string:", numStr);
+                }
+            } else {
+                console.log("No 'choose' or 'select' pattern found in question text.");
+            }
+
+            // Show the requirement to the user
+            const header = document.querySelector('.question-text');
+            const badge = document.createElement('span');
+            badge.className = "badge";
+            badge.style.marginLeft = "10px";
+            badge.style.fontSize = "0.8em";
+            badge.style.backgroundColor = "#e2e8f0";
+            badge.style.color = "#475569";
+            badge.innerText = `(Select ${requiredCount})`;
+            header.appendChild(badge);
+        }
+        console.log("Final requiredCount:", requiredCount);
+
+        if (isMultiple) {
+            // Remove 'required' attribute from checkboxes to avoid browser default separate validation
+            inputs.forEach(input => {
+                input.removeAttribute('required');
+                // Double check type, just to be safe (though template should have made them checkboxes)
+                if (input.type === 'checkbox') {
+                    input.removeAttribute('required');
+                }
+            });
+
+            function updateState() {
+                const checked = form.querySelectorAll('input[name="option_id"]:checked');
+                const count = checked.length;
+
+                // Enforce limit by disabling unchecked inputs when limit reached
+                if (count >= requiredCount) {
+                    inputs.forEach(input => {
+                        if (!input.checked) input.disabled = true;
+                    });
+                } else {
+                    inputs.forEach(input => {
+                        input.disabled = false;
+                    });
+                }
+            }
+
+            inputs.forEach(input => input.addEventListener('change', updateState));
+            updateState(); // Init
+
+            form.addEventListener('submit', function (e) {
+                const checked = form.querySelectorAll('input[name="option_id"]:checked');
+                if (checked.length !== requiredCount) {
+                    e.preventDefault();
+                    errorMsg.innerText = `Please select exactly ${requiredCount} options.`;
+                    errorMsg.style.display = 'block';
+                } else {
+                    errorMsg.style.display = 'none';
+                    // Enable all inputs before submit to ensure values are POSTed?
+                    // No, disabled checkboxes are NOT posted.
+                    // But we only want checked ones. Checked ones are NOT disabled.
+                    // So we are good.
+                }
+            });
+        }
+
+        // GLOBAL SAFETY: If any checkbox has required, it blocks submission if not checked.
+        // We never want 'required' on checkboxes in this specific UI pattern (custom limit).
+        // Only radios should have required.
+        inputs.forEach(input => {
+            if (input.type === 'checkbox') {
+                input.removeAttribute('required');
+            }
+        });
+    });
+</script>
+{{end}}

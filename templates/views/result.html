@@ -1,0 +1,38 @@
+{{define "content"}}
+<div class="result-container">
+    <div class="score-card">
+        <h1>Exam Completed</h1>
+        <div class="score-circle">
+            <span class="score-value">{{.Score}}</span>
+            <span class="score-label">Score</span>
+        </div>
+        <a href="/" class="btn-api secondary">Back to Home</a>
+    </div>
+
+    {{if .Reviews}}
+    <div class="review-section">
+        <h2>Review Incorrect Answers</h2>
+        <div class="review-list">
+            {{range .Reviews}}
+            <div class="review-item">
+                <h3 class="review-question">Question {{.Number}}: {{.Question}}</h3>
+                <div class="review-details">
+                    <p class="wrong-answer"><span class="label">Your Answer:</span> {{.UserAnswer}}</p>
+                    <p class="correct-answer"><span class="label">Correct Answer:</span> {{.CorrectAnswer}}</p>
+                    <div class="explanation">
+                        <strong>Explanation:</strong>
+                        <p>{{.Explanation}}</p>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+    {{else}}
+    <div class="perfect-score">
+        <h2>Perfect Score! 🎉</h2>
+        <p>You answered all questions correctly.</p>
+    </div>
+    {{end}}
+</div>
+{{end}}

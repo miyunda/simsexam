@@ -1,0 +1,23 @@
+# Database
+*.db
+
+# Sessions
+cookies*.txt
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux/General
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Go
+/bin/
+/dist/
+*.exe
+*.test
+vendor/

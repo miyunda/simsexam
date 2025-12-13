@@ -1,0 +1,31 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimsExam - Premium Exam Simulation</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="main-header">
+            <div class="logo">SimsExam</div>
+            <nav>
+                <a href="/">Home</a>
+            </nav>
+        </header>
+        <main class="content">
+            {{template "content" .}}
+        </main>
+        <footer class="main-footer">
+            <p>&copy; 2025 miyunda</p>
+        </footer>
+    </div>
+</body>
+
+</html>
+{{end}}

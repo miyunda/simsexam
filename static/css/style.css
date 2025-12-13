@@ -1,0 +1,287 @@
+:root {
+    /* Rose Pine Dawn Palette */
+    --base: #faf4ed;
+    --surface: #fffaf3;
+    --overlay: #f2e9e1;
+    --muted: #9893a5;
+    --subtle: #797593;
+    --text: #575279;
+    --love: #b4637a;
+    --gold: #ea9d34;
+    --rose: #d7827e;
+    --pine: #286983;
+    --foam: #56949f;
+    --iris: #907aa9;
+    --highlight-low: #f4ede8;
+    --highlight-med: #dfdad9;
+    --highlight-high: #cecacd;
+
+    /* Theme Mapping */
+    --bg-color: var(--base);
+    --card-bg: var(--surface);
+    --text-primary: var(--text);
+    --text-secondary: var(--subtle);
+    --accent-color: var(--rose);
+    /* Using Rose as primary accent */
+    --accent-hover: var(--love);
+    --danger: var(--love);
+    --success: var(--pine);
+    --font-family: 'Inter', sans-serif;
+    --border-color: var(--overlay);
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    font-family: var(--font-family);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-container {
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 20px;
+}
+
+.main-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 0;
+    margin-bottom: 40px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    background: linear-gradient(to right, var(--rose), var(--iris));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+nav a:hover {
+    color: var(--text-primary);
+}
+
+/* Home */
+.home-hero {
+    text-align: center;
+    padding: 40px 0;
+}
+
+.home-hero h1 {
+    font-size: 3rem;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    margin-bottom: 50px;
+}
+
+.subject-card {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 6px -1px rgba(87, 82, 121, 0.05);
+    /* Colored shadow */
+    transition: transform 0.2s;
+}
+
+.subject-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 15px -3px rgba(87, 82, 121, 0.1);
+}
+
+/* Exam */
+.exam-header {
+    margin-bottom: 30px;
+}
+
+.badge {
+    background: var(--overlay);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    border: 1px solid var(--highlight-med);
+}
+
+.progress-bar {
+    height: 6px;
+    background: var(--overlay);
+    border-radius: 3px;
+    margin-top: 15px;
+    overflow: hidden;
+}
+
+.progress {
+    height: 100%;
+    background: var(--accent-color);
+    transition: width 0.3s ease;
+}
+
+.question-card {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 6px -1px rgba(87, 82, 121, 0.05);
+}
+
+.question-text {
+    font-size: 1.5rem;
+    margin-bottom: 30px;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.options-grid {
+    display: grid;
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.option-card {
+    cursor: pointer;
+    position: relative;
+}
+
+.option-card input {
+    position: absolute;
+    opacity: 0;
+}
+
+.option-content {
+    display: block;
+    padding: 15px 20px;
+    background: var(--surface);
+    border: 2px solid var(--overlay);
+    border-radius: 12px;
+    transition: all 0.2s;
+    color: var(--text-primary);
+}
+
+.option-card input:checked+.option-content {
+    border-color: var(--accent-color);
+    background: var(--highlight-low);
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+.btn-api {
+    background: var(--accent-color);
+    color: #fffaf3;
+    /* Surface color for text on accent */
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-api:hover {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+}
+
+.btn-api:active {
+    transform: translateY(0);
+}
+
+.btn-api.secondary {
+    background: var(--overlay);
+    color: var(--text-primary);
+}
+
+.btn-api.secondary:hover {
+    background: var(--highlight-med);
+}
+
+/* Result */
+.score-card {
+    text-align: center;
+    margin-bottom: 50px;
+}
+
+.score-circle {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    border: 8px solid var(--pine);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin: 30px auto;
+    box-shadow: 0 10px 15px -3px rgba(40, 105, 131, 0.1);
+}
+
+.score-value {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--pine);
+}
+
+.score-label {
+    color: var(--text-secondary);
+}
+
+.review-item {
+    background: var(--surface);
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    border: 1px solid var(--overlay);
+    border-left: 4px solid var(--love);
+    box-shadow: 0 2px 4px rgba(87, 82, 121, 0.05);
+}
+
+.review-question {
+    margin-top: 0;
+    color: var(--text-primary);
+}
+
+.wrong-answer {
+    color: var(--love);
+}
+
+.correct-answer {
+    color: var(--pine);
+}
+
+.label {
+    font-weight: 600;
+    color: var(--subtle);
+    margin-right: 8px;
+}
+
+.explanation {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--overlay);
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    background: var(--highlight-low);
+    padding: 15px;
+    border-radius: 8px;
+}
