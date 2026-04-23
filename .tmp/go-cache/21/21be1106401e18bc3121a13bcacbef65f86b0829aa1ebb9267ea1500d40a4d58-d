@@ -1,4 +1,0 @@
-=== RUN   TestPrepareV1DatabaseImportsDefaultSeedOnce
---- PASS: TestPrepareV1DatabaseImportsDefaultSeedOnce (0.01s)
-PASS
-ok  	simsexam/internal/bootstrap	0.701s

@@ -20,7 +20,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Verify formatting
-        run: make fmt && test -z "$(gofmt -l .)"
+        run: make fmt && make fmt-check
 
       - name: Run tests
         run: make test

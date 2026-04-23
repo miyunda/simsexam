@@ -1,7 +1,0 @@
-./document.go
-./importer.go
-./parser.go
-./validator.go
-./importer_test.go
-./parser_test.go
-./validator_test.go

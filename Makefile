@@ -6,11 +6,12 @@ SEED_FILES ?=
 BIN_DIR ?= ./bin
 SERVER_BIN ?= $(BIN_DIR)/simsexam
 
-.PHONY: help fmt test build run migrate bootstrap import validate clean
+.PHONY: help fmt fmt-check test build run migrate bootstrap import validate clean
 
 help:
 	@printf "simsexam targets:\n"
 	@printf "  make fmt           Format Go files\n"
+	@printf "  make fmt-check     Verify Go files are formatted\n"
 	@printf "  make test          Run all tests\n"
 	@printf "  make build         Build all packages\n"
 	@printf "  make run           Run the web server\n"
@@ -27,6 +28,9 @@ help:
 
 fmt:
 	find . -name '*.go' -not -path './.tmp/*' -print0 | xargs -0 gofmt -w
+
+fmt-check:
+	@test -z "$$(find . -name '*.go' -not -path './.tmp/*' -print0 | xargs -0 gofmt -l)"
 
 test:
 	$(GO) test ./...

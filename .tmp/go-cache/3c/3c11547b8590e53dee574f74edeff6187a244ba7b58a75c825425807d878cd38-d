@@ -1,5 +1,0 @@
-=== RUN   TestNewServerAppBootstrapsAndServesHome
-2026/04/23 22:53:08 "GET http://example.com/ HTTP/1.1" from 192.0.2.1:1234 - 200 1574B in 1.00375ms
---- PASS: TestNewServerAppBootstrapsAndServesHome (0.01s)
-PASS
-ok  	simsexam/internal/app	0.730s
