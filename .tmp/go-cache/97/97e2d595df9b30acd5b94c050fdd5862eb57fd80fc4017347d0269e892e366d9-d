@@ -1,0 +1,9 @@
+# test log
+getenv SIMSEXAM_ADDR
+getenv SIMSEXAM_DB_PATH
+getenv SIMSEXAM_ADDR
+getenv SIMSEXAM_DB_PATH
+getenv SIMSEXAM_ADDR
+getenv SIMSEXAM_DB_PATH
+getenv SIMSEXAM_ADDR
+getenv SIMSEXAM_DB_PATH

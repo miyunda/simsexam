@@ -1,0 +1,6 @@
+# test log
+getenv GOTMPDIR
+getenv TMPDIR
+open ../../docs/examples/se-demo.md
+open ../../docs/examples/se-demo.md
+open /var/folders/c8/76mlczn516575ykdm_x4n1sw0000gn/T

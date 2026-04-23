@@ -1,0 +1,46 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Subjects</h1>
+            <p class="subtitle">Manage current subjects, question sets, and imports.</p>
+        </div>
+        <a href="/admin/import" class="btn-api primary">Import Markdown</a>
+    </div>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Subject</th>
+                    <th>Status</th>
+                    <th>Access</th>
+                    <th>Exam Setup</th>
+                    <th>Current Set</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Subjects}}
+                <tr>
+                    <td>
+                        <strong>{{.Title}}</strong>
+                        <div class="table-subtext">{{.Slug}}</div>
+                    </td>
+                    <td><span class="pill">{{.Status}}</span></td>
+                    <td>{{.AccessLevel}}</td>
+                    <td>{{.QuestionCount}} questions · {{.DurationMinutes}} min</td>
+                    <td>{{.CurrentQuestions}} questions</td>
+                    <td><a href="/admin/subjects/{{.ID}}/questions">View Questions</a></td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="6">No subjects found.</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</section>
+{{end}}

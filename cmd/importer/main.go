@@ -1,158 +1,114 @@
 package main
 
 import (
-	"bufio"
+	"context"
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"regexp"
+	"path/filepath"
+	"simsexam/internal/config"
 	"simsexam/internal/database"
-	"strings"
+	"simsexam/internal/importer"
 )
 
 func main() {
-	subjectName := flag.String("subject", "", "Subject name")
+	cfg := config.LoadImportConfig()
 	filePath := flag.String("file", "", "Path to markdown file")
+	dsn := flag.String("dsn", cfg.DBPath, "SQLite database path")
+	apply := flag.Bool("apply", false, "Persist the validated document into the v1 schema")
+	sourceType := flag.String("source-type", cfg.SourceType, "Import source type")
+	printDoc := flag.Bool("print-doc", false, "Print parsed document summary")
 	flag.Parse()
 
-	if *subjectName == "" || *filePath == "" {
-		log.Fatal("Usage: go run ./cmd/importer -subject <name> -file <path>")
+	if *filePath == "" {
+		log.Fatal("Usage: go run ./cmd/importer -file <path> [-print-doc]")
 	}
 
-	// Init DB
-	if err := database.InitDB("./simsexam.db"); err != nil {
-		log.Fatal(err)
-	}
-
-	// Get Subject ID
-	var subjectID int
-	err := database.DB.QueryRow("SELECT id FROM subjects WHERE name = ?", *subjectName).Scan(&subjectID)
+	doc, err := importer.ParseFile(*filePath)
 	if err != nil {
-		log.Fatalf("Subject '%s' not found: %v", *subjectName, err)
+		log.Fatalf("parse failed: %v", err)
 	}
 
-	file, err := os.Open(*filePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	var contentBuilder strings.Builder
-	for scanner.Scan() {
-		contentBuilder.WriteString(scanner.Text() + "\n")
+	report := importer.ValidateDocument(doc)
+	if *printDoc {
+		fmt.Printf("Subject: %s\n", doc.Manifest.Title)
+		fmt.Printf("Slug: %s\n", doc.Manifest.Slug)
+		fmt.Printf("Version: %s\n", doc.Manifest.Version)
+		fmt.Printf("Questions: %d\n", len(doc.Questions))
 	}
 
-	content := contentBuilder.String()
-	blocks := strings.Split(content, "---")
+	fmt.Printf("Validation summary for %s\n", *filePath)
+	fmt.Printf("- subject slug: %s\n", doc.Manifest.Slug)
+	fmt.Printf("- title: %s\n", doc.Manifest.Title)
+	fmt.Printf("- questions: %d\n", len(doc.Questions))
+	fmt.Printf("- errors: %d\n", len(report.Errors))
+	fmt.Printf("- warnings: %d\n", len(report.Warnings))
 
-	count := 0
-	for _, block := range blocks {
-		if strings.TrimSpace(block) == "" {
+	for _, msg := range report.Errors {
+		if msg.Line > 0 {
+			fmt.Printf("ERROR line %d [%s] %s\n", msg.Line, msg.Field, msg.Message)
 			continue
 		}
-		processBlock(subjectID, block)
-		count++
+		fmt.Printf("ERROR [%s] %s\n", msg.Field, msg.Message)
+	}
+	for _, msg := range report.Warnings {
+		if msg.Line > 0 {
+			fmt.Printf("WARN  line %d [%s] %s\n", msg.Line, msg.Field, msg.Message)
+			continue
+		}
+		fmt.Printf("WARN  [%s] %s\n", msg.Field, msg.Message)
 	}
 
-	fmt.Printf("Imported %d questions for subject '%s'.\n", count, *subjectName)
+	if !report.Valid() {
+		log.Fatal("validation failed")
+	}
+
+	fmt.Println("Validation passed.")
+
+	if !*apply {
+		return
+	}
+
+	db, err := database.OpenSQLite(*dsn)
+	if err != nil {
+		log.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.RunMigrations(db, database.V1Migrations); err != nil {
+		log.Fatalf("run migrations: %v", err)
+	}
+
+	checksum, err := fileChecksum(*filePath)
+	if err != nil {
+		log.Fatalf("checksum file: %v", err)
+	}
+
+	result, err := importer.ImportDocument(context.Background(), db, doc, importer.ImportOptions{
+		SourceType:     *sourceType,
+		SourceFilename: filepath.Base(*filePath),
+		SourceChecksum: checksum,
+		Activate:       true,
+	})
+	if err != nil {
+		log.Fatalf("import failed: %v", err)
+	}
+
+	fmt.Printf("Imported into %s\n", *dsn)
+	fmt.Printf("- subject_id: %d\n", result.SubjectID)
+	fmt.Printf("- question_set_id: %d\n", result.QuestionSetID)
+	fmt.Printf("- import_job_id: %d\n", result.ImportJobID)
+	fmt.Printf("- inserted questions: %d\n", result.QuestionsCount)
+	fmt.Printf("- inserted options: %d\n", result.OptionsCount)
 }
 
-func processBlock(subjectID int, block string) {
-	lines := strings.Split(strings.TrimSpace(block), "\n")
-	if len(lines) == 0 {
-		return
-	}
-
-	// 1. Identify Question Text (First paragraph usually)
-	// Simple assumption: Everything up until first Option (A.) is the question text.
-	// OR use regex to find start of options.
-
-	optionRegex := regexp.MustCompile(`^(\*{0,2}[A-E]\*{0,2}\.?) `)
-	explanationRegex := regexp.MustCompile(`^> \*\*Explanation:\*\*`)
-
-	var qTextBuilder strings.Builder
-	var options []string
-	var explanationBuilder strings.Builder
-
-	inOptions := false
-	inExplanation := false
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if explanationRegex.MatchString(line) {
-			inExplanation = true
-			inOptions = false
-			// Remove "> **Explanation:** " prefix
-			line = strings.TrimPrefix(line, "> **Explanation:** ")
-			line = strings.TrimPrefix(line, "**Explanation:** ") // Just in case
-			explanationBuilder.WriteString(line + "\n")
-			continue
-		}
-
-		if inExplanation {
-			if strings.HasPrefix(line, ">") {
-				line = strings.TrimPrefix(line, ">")
-			}
-			explanationBuilder.WriteString(strings.TrimSpace(line) + "\n")
-			continue
-		}
-
-		if optionRegex.MatchString(line) {
-			inOptions = true
-			options = append(options, line)
-			continue
-		}
-
-		if !inOptions && !inExplanation {
-			qTextBuilder.WriteString(line + "\n")
-		}
-	}
-
-	qText := strings.TrimSpace(qTextBuilder.String())
-	explanation := strings.TrimSpace(explanationBuilder.String())
-
-	if qText == "" || len(options) == 0 {
-		log.Printf("Skipping invalid block (no text or options). qText len: %d, options len: %d\n", len(qText), len(options))
-		return // Skip malformed
-	}
-
-	// Detect Type
-	qType := "single"
-	if strings.Contains(strings.ToLower(qText), "choose two") || strings.Contains(strings.ToLower(qText), "select two") {
-		qType = "multiple"
-	}
-
-	// Insert Question
-	res, err := database.DB.Exec("INSERT INTO questions (subject_id, text, type, explanation) VALUES (?, ?, ?, ?)", subjectID, qText, qType, explanation)
+func fileChecksum(path string) (string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		log.Printf("Error inserting question: %v", err)
-		return
+		return "", err
 	}
-	qID, _ := res.LastInsertId()
-
-	// Process Options
-	for _, optLine := range options {
-		isCorrect := false
-		if strings.HasPrefix(optLine, "**") {
-			isCorrect = true
-			optLine = strings.TrimPrefix(optLine, "**")
-			optLine = strings.TrimSuffix(optLine, "**")
-		}
-
-		// Clean up "A. " or "A."
-		// Regex to remove leading letter markers
-		cleanRegex := regexp.MustCompile(`^[A-E]\.?\s*`)
-		optText := cleanRegex.ReplaceAllString(optLine, "")
-
-		_, err = database.DB.Exec("INSERT INTO options (question_id, text, is_correct) VALUES (?, ?, ?)", qID, optText, isCorrect)
-		if err != nil {
-			log.Printf("Error inserting option: %v", err)
-		}
-	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum[:]), nil
 }

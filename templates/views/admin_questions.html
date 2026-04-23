@@ -1,0 +1,40 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>{{.Subject.Title}}</h1>
+            <p class="subtitle">{{.Subject.Slug}} · current question set #{{.Subject.CurrentQuestionSet}}</p>
+        </div>
+        <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+    </div>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Type</th>
+                    <th>Stem</th>
+                    <th>Options</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Questions}}
+                <tr>
+                    <td><code>{{.Key}}</code></td>
+                    <td>{{.Type}}</td>
+                    <td>{{.Stem}}</td>
+                    <td>{{.OptionCount}}</td>
+                    <td><a href="/admin/questions/{{.ID}}/edit">Edit</a></td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="5">No questions found for the current question set.</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</section>
+{{end}}

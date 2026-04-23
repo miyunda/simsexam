@@ -7,8 +7,9 @@
         style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
         {{range .Subjects}}
         <div class="subject-card">
-            <h2>{{.Name}}</h2>
+            <h2>{{.Title}}</h2>
             <p>{{.Description}}</p>
+            <p><small>{{.QuestionCount}} questions · {{.DurationMinutes}} min · {{.AccessLevel}}</small></p>
             <form action="/exam/start" method="POST">
                 <input type="hidden" name="subject_id" value="{{.ID}}">
                 <button type="submit" class="btn-api primary">Start Exam</button>

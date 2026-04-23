@@ -1,0 +1,67 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Edit Question</h1>
+            <p class="subtitle">{{.SubjectTitle}} · <code>{{.Key}}</code></p>
+        </div>
+        <a href="/admin/subjects/{{.SubjectID}}/questions" class="btn-api secondary">Back to Questions</a>
+    </div>
+
+    {{if .Errors}}
+    <div class="alert-card alert-error">
+        <strong>Save blocked</strong>
+        <ul class="alert-list">
+            {{range .Errors}}
+            <li>{{.}}</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    <form action="/admin/questions/{{.QuestionID}}/edit" method="POST" class="admin-form-card">
+        <div class="form-section">
+            <label for="type">Question Type</label>
+            <select id="type" name="type" class="form-select">
+                <option value="single" {{if eq .Type "single"}}selected{{end}}>single</option>
+                <option value="multiple" {{if eq .Type "multiple"}}selected{{end}}>multiple</option>
+            </select>
+        </div>
+
+        <div class="form-section">
+            <label for="stem">Stem</label>
+            <textarea id="stem" name="stem" rows="6">{{.Stem}}</textarea>
+        </div>
+
+        <div class="form-section">
+            <label for="explanation">Explanation</label>
+            <textarea id="explanation" name="explanation" rows="6">{{.Explanation}}</textarea>
+        </div>
+
+        <div class="form-section">
+            <label for="change_summary">Change Summary</label>
+            <input id="change_summary" name="change_summary" type="text" value="{{.ChangeSummary}}" class="form-input"
+                placeholder="What changed?">
+        </div>
+
+        <div class="options-editor">
+            <h2>Options</h2>
+            {{range $idx, $opt := .Options}}
+            <div class="option-editor-row">
+                <input type="hidden" name="option_id" value="{{$opt.ID}}">
+                <label class="option-correct-toggle">
+                    <input type="checkbox" name="correct_index" value="{{$idx}}" {{if $opt.IsCorrect}}checked{{end}}>
+                    <span>Correct</span>
+                </label>
+                <input type="text" name="option_text" value="{{$opt.Text}}" class="form-input">
+            </div>
+            {{end}}
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn-api primary">Save Question</button>
+        </div>
+    </form>
+</section>
+{{end}}

@@ -1,0 +1,41 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Import Completed</h1>
+            <p class="subtitle">{{.SubjectTitle}} was imported and activated as the current question set.</p>
+        </div>
+        <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+    </div>
+
+    <div class="stats-grid">
+        <div class="subject-card">
+            <h2>Subject</h2>
+            <p>{{.SubjectTitle}}</p>
+            <p class="table-subtext">{{.SubjectSlug}}</p>
+        </div>
+        <div class="subject-card">
+            <h2>Question Set</h2>
+            <p>#{{.QuestionSetID}}</p>
+            <p class="table-subtext">{{.QuestionsCount}} questions · {{.OptionsCount}} options</p>
+        </div>
+        <div class="subject-card">
+            <h2>Import Job</h2>
+            <p>#{{.ImportJobID}}</p>
+            <p class="table-subtext">{{.SourceName}}</p>
+        </div>
+    </div>
+
+    {{if .Warnings}}
+    <div class="alert-card alert-warning">
+        <strong>Warnings</strong>
+        <ul class="alert-list">
+            {{range .Warnings}}
+            <li>{{.}}</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+</section>
+{{end}}

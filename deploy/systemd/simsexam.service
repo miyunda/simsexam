@@ -1,0 +1,17 @@
+[Unit]
+Description=simsexam web service
+After=network.target
+
+[Service]
+Type=simple
+User=simsexam
+Group=simsexam
+WorkingDirectory=/opt/simsexam/current
+ExecStart=/opt/simsexam/bin/simsexam
+Restart=always
+RestartSec=3
+Environment=SIMSEXAM_ADDR=127.0.0.1:6080
+Environment=SIMSEXAM_DB_PATH=/var/lib/simsexam/simsexam_v1.db
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+=== RUN   TestHomeRendersPublishedSubject
+--- PASS: TestHomeRendersPublishedSubject (0.01s)
+=== RUN   TestExamFlowPerfectScore
+2026/04/23 22:53:42 "POST http://example.com/exam/start HTTP/1.1" from 192.0.2.1:1234 - 303 0B in 364.834µs
+2026/04/23 22:53:42 "POST http://example.com/exam/1/answer HTTP/1.1" from 192.0.2.1:1234 - 303 0B in 336.209µs
+2026/04/23 22:53:42 "POST http://example.com/exam/1/answer HTTP/1.1" from 192.0.2.1:1234 - 303 0B in 369.916µs
+2026/04/23 22:53:42 "GET http://example.com/exam/1/result HTTP/1.1" from 192.0.2.1:1234 - 200 1295B in 203.542µs
+--- PASS: TestExamFlowPerfectScore (0.00s)
+=== RUN   TestExamFlowShowsIncorrectReview
+2026/04/23 22:53:42 "POST http://example.com/exam/start HTTP/1.1" from 192.0.2.1:1234 - 303 0B in 364.417µs
+2026/04/23 22:53:42 "POST http://example.com/exam/1/answer HTTP/1.1" from 192.0.2.1:1234 - 303 0B in 271.416µs
+2026/04/23 22:53:42 "POST http://example.com/exam/1/answer HTTP/1.1" from 192.0.2.1:1234 - 303 0B in 331.459µs
+2026/04/23 22:53:42 "GET http://example.com/exam/1/result HTTP/1.1" from 192.0.2.1:1234 - 200 1969B in 397.625µs
+--- PASS: TestExamFlowShowsIncorrectReview (0.01s)
+=== RUN   TestAdminSubjectsAndQuestionsPages
+2026/04/23 22:53:42 "GET http://example.com/admin/subjects HTTP/1.1" from 192.0.2.1:1234 - 200 2152B in 199.625µs
+2026/04/23 22:53:42 "GET http://example.com/admin/subjects/1/questions HTTP/1.1" from 192.0.2.1:1234 - 200 2200B in 153.792µs
+--- PASS: TestAdminSubjectsAndQuestionsPages (0.00s)
+=== RUN   TestAdminImportMarkdownText
+2026/04/23 22:53:42 "POST http://example.com/admin/import HTTP/1.1" from 192.0.2.1:1234 - 200 1758B in 958.458µs
+--- PASS: TestAdminImportMarkdownText (0.00s)
+=== RUN   TestAdminImportMarkdownFile
+2026/04/23 22:53:42 "POST http://example.com/admin/import HTTP/1.1" from 192.0.2.1:1234 - 200 1766B in 674.041µs
+--- PASS: TestAdminImportMarkdownFile (0.00s)
+=== RUN   TestAdminEditQuestionUpdatesQuestionAndCreatesRevision
+2026/04/23 22:53:42 "GET http://example.com/admin/questions/1/edit HTTP/1.1" from 192.0.2.1:1234 - 200 4237B in 570.833µs
+2026/04/23 22:53:42 "POST http://example.com/admin/questions/1/edit HTTP/1.1" from 192.0.2.1:1234 - 303 0B in 448.041µs
+--- PASS: TestAdminEditQuestionUpdatesQuestionAndCreatesRevision (0.01s)
+PASS
+ok  	simsexam/internal/handlers	0.875s

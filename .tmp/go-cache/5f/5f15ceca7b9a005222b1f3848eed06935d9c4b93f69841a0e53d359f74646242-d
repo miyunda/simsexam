@@ -1,0 +1,4 @@
+=== RUN   TestParseStringParsesValidDocument
+--- PASS: TestParseStringParsesValidDocument (0.00s)
+PASS
+ok  	simsexam/internal/importer	0.205s

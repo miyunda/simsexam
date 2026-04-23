@@ -1,0 +1,3 @@
+./hash.go
+./v1.go
+./v1_test.go

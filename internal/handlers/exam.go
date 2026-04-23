@@ -1,33 +1,21 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+
 	"simsexam/internal/database"
 	"simsexam/internal/models"
-	"strconv"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gomarkdown/markdown"
 )
-
-// In-memory store for active sessions (for simplicity/prototype)
-// In production, use Redis or DB for session state
-var activeSessions = struct {
-	sync.RWMutex
-	m map[int]*SessionData
-}{m: make(map[int]*SessionData)}
-
-type SessionData struct {
-	ExamSessionID int
-	QuestionIDs   []int
-	CurrentIndex  int
-	Answers       map[int][]int // QuestionID -> []OptionID
-}
 
 var questionNumRegex = regexp.MustCompile(`(?i)^(?:question\s+)?\d+[:.]\s+`)
 
@@ -37,93 +25,135 @@ func cleanQuestionText(text string) string {
 
 func StartExam(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Parse form error", 400)
-		return
-	}
-	subjectIDInt, _ := strconv.Atoi(r.FormValue("subject_id"))
-	if subjectIDInt == 0 {
-		http.Error(w, "Invalid subject", 400)
+		http.Error(w, "Parse form error", http.StatusBadRequest)
 		return
 	}
 
-	// Create Exam Session in DB
-	res, err := database.DB.Exec("INSERT INTO exam_sessions (subject_id) VALUES (?)", subjectIDInt)
-	if err != nil {
-		http.Error(w, "Failed to start exam", 500)
+	subjectID, _ := strconv.Atoi(r.FormValue("subject_id"))
+	if subjectID == 0 {
+		http.Error(w, "Invalid subject", http.StatusBadRequest)
 		return
 	}
-	sessionID, _ := res.LastInsertId()
 
-	// 3. Get Questions (shuffled)
-	var limit int
-	// Get limit for this specific subject
-	err = database.DB.QueryRow("SELECT question_limit FROM subjects WHERE id = ?", subjectIDInt).Scan(&limit)
+	tx, err := database.DB.Begin()
 	if err != nil {
-		log.Printf("Error getting question limit for subject %d: %v", subjectIDInt, err)
-		limit = 10 // Fallback
+		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	var questionSetID int
+	var questionCount int
+	err = tx.QueryRow(`
+		SELECT current_question_set_id, question_count
+		FROM subjects
+		WHERE id = ? AND status = 'published' AND current_question_set_id IS NOT NULL
+	`, subjectID).Scan(&questionSetID, &questionCount)
+	if err != nil {
+		http.Error(w, "Subject not available", http.StatusNotFound)
+		return
 	}
 
-	rows, err := database.DB.Query("SELECT id FROM questions WHERE subject_id = ? ORDER BY RANDOM() LIMIT ?", subjectIDInt, limit)
+	res, err := tx.Exec(`
+		INSERT INTO exams (subject_id, question_set_id, mode, status)
+		VALUES (?, ?, 'practice', 'in_progress')
+	`, subjectID, questionSetID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
+		return
+	}
+	examID, _ := res.LastInsertId()
+
+	rows, err := tx.Query(`
+		SELECT id
+		FROM questions
+		WHERE subject_id = ? AND question_set_id = ? AND status = 'active'
+		ORDER BY RANDOM()
+		LIMIT ?
+	`, subjectID, questionSetID, questionCount)
+	if err != nil {
+		http.Error(w, "Failed to load questions", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var qIDs []int
+	var questionIDs []int
 	for rows.Next() {
-		var id int
-		rows.Scan(&id)
-		qIDs = append(qIDs, id)
+		var questionID int
+		if err := rows.Scan(&questionID); err != nil {
+			http.Error(w, "Failed to load questions", http.StatusInternalServerError)
+			return
+		}
+		questionIDs = append(questionIDs, questionID)
 	}
-
-	// Store session
-	activeSessions.Lock()
-	activeSessions.m[int(sessionID)] = &SessionData{
-		ExamSessionID: int(sessionID),
-		QuestionIDs:   qIDs,
-		CurrentIndex:  0,
-		Answers:       make(map[int][]int),
-	}
-	activeSessions.Unlock()
-
-	http.Redirect(w, r, fmt.Sprintf("/exam/%d/question/1", sessionID), http.StatusSeeOther)
-}
-
-func GetQuestion(w http.ResponseWriter, r *http.Request) {
-	sessionID, _ := strconv.Atoi(chi.URLParam(r, "id"))
-	qIdx, _ := strconv.Atoi(chi.URLParam(r, "qIdx"))
-
-	activeSessions.RLock()
-	session, exists := activeSessions.m[sessionID]
-	activeSessions.RUnlock()
-
-	if !exists || qIdx < 1 || qIdx > len(session.QuestionIDs) {
-		http.Error(w, "Invalid session or question index", 400)
+	if len(questionIDs) == 0 {
+		http.Error(w, "No active questions available for this subject", http.StatusBadRequest)
 		return
 	}
 
-	qID := session.QuestionIDs[qIdx-1]
+	for idx, questionID := range questionIDs {
+		if _, err := tx.Exec(`
+			INSERT INTO exam_questions (exam_id, question_id, position)
+			VALUES (?, ?, ?)
+		`, examID, questionID, idx+1); err != nil {
+			http.Error(w, "Failed to persist exam questions", http.StatusInternalServerError)
+			return
+		}
+	}
 
-	// Fetch Question and Options
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/exam/%d/question/1", examID), http.StatusSeeOther)
+}
+
+func GetQuestion(w http.ResponseWriter, r *http.Request) {
+	examID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	qIdx, _ := strconv.Atoi(chi.URLParam(r, "qIdx"))
+	if examID == 0 || qIdx < 1 {
+		http.Error(w, "Invalid session or question index", http.StatusBadRequest)
+		return
+	}
+
+	total, err := examQuestionCount(database.DB, examID)
+	if err != nil || total == 0 || qIdx > total {
+		http.Error(w, "Invalid session or question index", http.StatusBadRequest)
+		return
+	}
+
 	var q models.Question
-	err := database.DB.QueryRow("SELECT id, text, type FROM questions WHERE id = ?", qID).Scan(&q.ID, &q.Text, &q.Type)
+	err = database.DB.QueryRow(`
+		SELECT q.id, q.subject_id, q.stem_markdown, q.type, COALESCE(q.explanation_markdown, '')
+		FROM exam_questions eq
+		JOIN questions q ON q.id = eq.question_id
+		WHERE eq.exam_id = ? AND eq.position = ?
+	`, examID, qIdx).Scan(&q.ID, &q.SubjectID, &q.Text, &q.Type, &q.Explanation)
 	if err != nil {
-		http.Error(w, "Question not found", 404)
+		http.Error(w, "Question not found", http.StatusNotFound)
 		return
 	}
 	q.Text = cleanQuestionText(q.Text)
 
-	rows, err := database.DB.Query("SELECT id, text FROM options WHERE question_id = ?", qID)
+	rows, err := database.DB.Query(`
+		SELECT id, question_id, content_markdown
+		FROM question_options
+		WHERE question_id = ?
+		ORDER BY sort_order
+	`, q.ID)
 	if err != nil {
-		http.Error(w, "Options error", 500)
+		http.Error(w, "Options error", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var o models.Option
-		rows.Scan(&o.ID, &o.Text)
+		if err := rows.Scan(&o.ID, &o.QuestionID, &o.Text); err != nil {
+			http.Error(w, "Options error", http.StatusInternalServerError)
+			return
+		}
 		q.Options = append(q.Options, o)
 	}
 
@@ -135,10 +165,10 @@ func GetQuestion(w http.ResponseWriter, r *http.Request) {
 		NextIndex    int
 		PrevIndex    int
 	}{
-		SessionID:    sessionID,
+		SessionID:    examID,
 		Question:     q,
 		CurrentIndex: qIdx,
-		Total:        len(session.QuestionIDs),
+		Total:        total,
 		NextIndex:    qIdx + 1,
 		PrevIndex:    qIdx - 1,
 	}
@@ -147,53 +177,94 @@ func GetQuestion(w http.ResponseWriter, r *http.Request) {
 }
 
 func SubmitAnswer(w http.ResponseWriter, r *http.Request) {
-	sessionID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	examID, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Parse form error", 400)
+		http.Error(w, "Parse form error", http.StatusBadRequest)
 		return
 	}
 
-	qID, _ := strconv.Atoi(r.FormValue("question_id"))
+	questionID, _ := strconv.Atoi(r.FormValue("question_id"))
 	qIdx, _ := strconv.Atoi(r.FormValue("current_index"))
-
-	// multiple options
-	var selectedOpts []int
-	for _, v := range r.Form["option_id"] {
-		id, _ := strconv.Atoi(v)
-		selectedOpts = append(selectedOpts, id)
+	if examID == 0 || questionID == 0 || qIdx == 0 {
+		http.Error(w, "Invalid answer submission", http.StatusBadRequest)
+		return
 	}
 
-	var totalQuestions int
-	activeSessions.Lock()
-	if session, exists := activeSessions.m[sessionID]; exists {
-		session.Answers[qID] = selectedOpts
-		session.CurrentIndex = qIdx // update progress
-		totalQuestions = len(session.QuestionIDs)
+	var selected []int
+	for _, raw := range r.Form["option_id"] {
+		optionID, _ := strconv.Atoi(raw)
+		if optionID > 0 {
+			selected = append(selected, optionID)
+		}
 	}
-	activeSessions.Unlock()
+	if len(selected) == 0 {
+		http.Error(w, "At least one option must be selected", http.StatusBadRequest)
+		return
+	}
 
-	// Navigate
+	tx, err := database.DB.Begin()
+	if err != nil {
+		http.Error(w, "Failed to save answer", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	totalQuestions, err := examQuestionCountTx(tx, examID)
+	if err != nil || totalQuestions == 0 || qIdx > totalQuestions {
+		http.Error(w, "Invalid exam state", http.StatusBadRequest)
+		return
+	}
+
+	isCorrect, err := validateAndScoreAnswer(tx, questionID, selected)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := upsertExamAnswer(tx, examID, questionID, selected, isCorrect); err != nil {
+		http.Error(w, "Failed to save answer", http.StatusInternalServerError)
+		return
+	}
+
+	if qIdx == totalQuestions {
+		if _, err := finalizeExam(tx, examID); err != nil {
+			http.Error(w, "Failed to finish exam", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Failed to save answer", http.StatusInternalServerError)
+		return
+	}
+
 	if qIdx < totalQuestions {
-		http.Redirect(w, r, fmt.Sprintf("/exam/%d/question/%d", sessionID, qIdx+1), http.StatusSeeOther)
-	} else {
-		http.Redirect(w, r, fmt.Sprintf("/exam/%d/result", sessionID), http.StatusSeeOther)
+		http.Redirect(w, r, fmt.Sprintf("/exam/%d/question/%d", examID, qIdx+1), http.StatusSeeOther)
+		return
 	}
+	http.Redirect(w, r, fmt.Sprintf("/exam/%d/result", examID), http.StatusSeeOther)
 }
 
 func ExamResult(w http.ResponseWriter, r *http.Request) {
-	sessionID, _ := strconv.Atoi(chi.URLParam(r, "id"))
-
-	activeSessions.RLock()
-	session, exists := activeSessions.m[sessionID]
-	activeSessions.RUnlock()
-
-	if !exists {
-		http.Error(w, "Session not found", 404)
+	examID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	if examID == 0 {
+		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
-	// Calculate Score and Gather Review Data
-	correctCount := 0
+	tx, err := database.DB.Begin()
+	if err != nil {
+		http.Error(w, "Failed to load result", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	score, err := finalizeExam(tx, examID)
+	if err != nil {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
 	type ReviewItem struct {
 		Number        int
 		Question      string
@@ -204,89 +275,56 @@ func ExamResult(w http.ResponseWriter, r *http.Request) {
 	}
 	var reviews []ReviewItem
 
-	for i, qID := range session.QuestionIDs {
-		var qText, explanation string
-		err := database.DB.QueryRow("SELECT text, explanation FROM questions WHERE id = ?", qID).Scan(&qText, &explanation)
-		if err != nil {
+	rows, err := tx.Query(`
+		SELECT eq.position, q.id, q.stem_markdown, COALESCE(q.explanation_markdown, ''), COALESCE(ea.is_correct, 0)
+		FROM exam_questions eq
+		JOIN questions q ON q.id = eq.question_id
+		LEFT JOIN exam_answers ea ON ea.exam_id = eq.exam_id AND ea.question_id = eq.question_id
+		WHERE eq.exam_id = ?
+		ORDER BY eq.position
+	`, examID)
+	if err != nil {
+		http.Error(w, "Failed to load result", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			position    int
+			questionID  int
+			qText       string
+			explanation string
+			isCorrect   int
+		)
+		if err := rows.Scan(&position, &questionID, &qText, &explanation, &isCorrect); err != nil {
+			http.Error(w, "Failed to load result", http.StatusInternalServerError)
+			return
+		}
+		if isCorrect == 1 {
 			continue
 		}
-		qText = cleanQuestionText(qText)
 
-		// Get Correct Options
-		var correctOptTexts []string
-		var correctOptIDs []int
-		rows, _ := database.DB.Query("SELECT id, text FROM options WHERE question_id = ? AND is_correct = 1", qID)
-		for rows.Next() {
-			var id int
-			var txt string
-			rows.Scan(&id, &txt)
-			correctOptIDs = append(correctOptIDs, id)
-			correctOptTexts = append(correctOptTexts, txt)
+		userAnswers, correctAnswers, err := loadReviewAnswers(tx, examID, questionID)
+		if err != nil {
+			http.Error(w, "Failed to load result", http.StatusInternalServerError)
+			return
 		}
-		rows.Close()
-
-		userOptIDs := session.Answers[qID]
-		var userOptTexts []string
-		if len(userOptIDs) > 0 {
-			// Build query for user answers (placeholder generation)
-			// SQLite doesn't support array parameters smoothly, loop or construct query
-			// Simple loop for now
-			for _, id := range userOptIDs {
-				var txt string
-				database.DB.QueryRow("SELECT text FROM options WHERE id = ?", id).Scan(&txt)
-				userOptTexts = append(userOptTexts, txt)
-			}
-		}
-
-		// Check correctness
-		// Sets match?
-		isCorrect := false
-		if len(userOptIDs) == len(correctOptIDs) {
-			matchCount := 0
-			for _, uID := range userOptIDs {
-				for _, cID := range correctOptIDs {
-					if uID == cID {
-						matchCount++
-						break
-					}
-				}
-			}
-			if matchCount == len(correctOptIDs) {
-				isCorrect = true
-			}
-		}
-
-		if isCorrect {
-			correctCount++
-		}
-
-		// Only show review for wrong answers? User said "review of each wrong answer".
-		// But usually users want to see all or just wrong. Let's show wrong ones primarily or mark them.
-		// Detailed requirement: "review of each wrong answer".
-		if !isCorrect {
-			// Join texts for display
-			md := []byte(explanation)
-			htmlBytes := markdown.ToHTML(md, nil, nil)
-
-			reviews = append(reviews, ReviewItem{
-				Number:        i + 1,
-				Question:      qText,
-				UserAnswer:    fmt.Sprintf("%v", userOptTexts), // Simple formatting
-				CorrectAnswer: fmt.Sprintf("%v", correctOptTexts),
-				Explanation:   template.HTML(htmlBytes),
-				IsCorrect:     false,
-			})
-		}
+		htmlBytes := markdown.ToHTML([]byte(explanation), nil, nil)
+		reviews = append(reviews, ReviewItem{
+			Number:        position,
+			Question:      cleanQuestionText(qText),
+			UserAnswer:    joinAnswerTexts(userAnswers),
+			CorrectAnswer: joinAnswerTexts(correctAnswers),
+			Explanation:   template.HTML(htmlBytes),
+			IsCorrect:     false,
+		})
 	}
 
-	totalQuestions := len(session.QuestionIDs)
-	if totalQuestions == 0 {
-		totalQuestions = 1 // Prevent divide by zero
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Failed to load result", http.StatusInternalServerError)
+		return
 	}
-	score := (correctCount * 100) / totalQuestions
-
-	// Update DB
-	database.DB.Exec("UPDATE exam_sessions SET score = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?", score, sessionID)
 
 	data := struct {
 		Score   int
@@ -297,4 +335,210 @@ func ExamResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderTemplate(w, "result.html", data)
+}
+
+func examQuestionCount(db *sql.DB, examID int) (int, error) {
+	var total int
+	err := db.QueryRow(`SELECT COUNT(*) FROM exam_questions WHERE exam_id = ?`, examID).Scan(&total)
+	return total, err
+}
+
+func examQuestionCountTx(tx *sql.Tx, examID int) (int, error) {
+	var total int
+	err := tx.QueryRow(`SELECT COUNT(*) FROM exam_questions WHERE exam_id = ?`, examID).Scan(&total)
+	return total, err
+}
+
+func validateAndScoreAnswer(tx *sql.Tx, questionID int, selected []int) (bool, error) {
+	rows, err := tx.Query(`
+		SELECT id, is_correct
+		FROM question_options
+		WHERE question_id = ?
+	`, questionID)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	validOptions := make(map[int]bool)
+	var correctIDs []int
+	for rows.Next() {
+		var optionID int
+		var isCorrect int
+		if err := rows.Scan(&optionID, &isCorrect); err != nil {
+			return false, err
+		}
+		validOptions[optionID] = true
+		if isCorrect == 1 {
+			correctIDs = append(correctIDs, optionID)
+		}
+	}
+	if len(validOptions) == 0 {
+		return false, fmt.Errorf("question options not found")
+	}
+
+	seen := make(map[int]bool)
+	var normalized []int
+	for _, optionID := range selected {
+		if !validOptions[optionID] {
+			return false, fmt.Errorf("selected option does not belong to question")
+		}
+		if seen[optionID] {
+			continue
+		}
+		seen[optionID] = true
+		normalized = append(normalized, optionID)
+	}
+
+	sort.Ints(normalized)
+	sort.Ints(correctIDs)
+	if len(normalized) != len(correctIDs) {
+		return false, nil
+	}
+	for idx := range normalized {
+		if normalized[idx] != correctIDs[idx] {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func upsertExamAnswer(tx *sql.Tx, examID, questionID int, selected []int, isCorrect bool) error {
+	var answerID int64
+	err := tx.QueryRow(`
+		SELECT id
+		FROM exam_answers
+		WHERE exam_id = ? AND question_id = ?
+	`, examID, questionID).Scan(&answerID)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+
+	if err == sql.ErrNoRows {
+		res, err := tx.Exec(`
+			INSERT INTO exam_answers (exam_id, question_id, is_correct)
+			VALUES (?, ?, ?)
+		`, examID, questionID, boolToInt(isCorrect))
+		if err != nil {
+			return err
+		}
+		answerID, err = res.LastInsertId()
+		if err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.Exec(`
+			UPDATE exam_answers
+			SET answered_at = CURRENT_TIMESTAMP, is_correct = ?
+			WHERE id = ?
+		`, boolToInt(isCorrect), answerID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM exam_answer_options WHERE exam_answer_id = ?`, answerID); err != nil {
+			return err
+		}
+	}
+
+	for _, optionID := range selected {
+		if _, err := tx.Exec(`
+			INSERT INTO exam_answer_options (exam_answer_id, option_id)
+			VALUES (?, ?)
+		`, answerID, optionID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func finalizeExam(tx *sql.Tx, examID int) (int, error) {
+	var totalQuestions int
+	if err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM exam_questions
+		WHERE exam_id = ?
+	`, examID).Scan(&totalQuestions); err != nil {
+		return 0, err
+	}
+	if totalQuestions == 0 {
+		return 0, sql.ErrNoRows
+	}
+
+	var correctCount int
+	if err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM exam_answers
+		WHERE exam_id = ? AND is_correct = 1
+	`, examID).Scan(&correctCount); err != nil {
+		return 0, err
+	}
+
+	score := (correctCount * 100) / totalQuestions
+	if _, err := tx.Exec(`
+		UPDATE exams
+		SET score = ?, status = 'submitted', submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP)
+		WHERE id = ?
+	`, score, examID); err != nil {
+		return 0, err
+	}
+	return score, nil
+}
+
+func loadReviewAnswers(tx *sql.Tx, examID, questionID int) ([]string, []string, error) {
+	userRows, err := tx.Query(`
+		SELECT qo.content_markdown
+		FROM exam_answers ea
+		JOIN exam_answer_options eao ON eao.exam_answer_id = ea.id
+		JOIN question_options qo ON qo.id = eao.option_id
+		WHERE ea.exam_id = ? AND ea.question_id = ?
+		ORDER BY qo.sort_order
+	`, examID, questionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer userRows.Close()
+
+	var userAnswers []string
+	for userRows.Next() {
+		var text string
+		if err := userRows.Scan(&text); err != nil {
+			return nil, nil, err
+		}
+		userAnswers = append(userAnswers, text)
+	}
+
+	correctRows, err := tx.Query(`
+		SELECT content_markdown
+		FROM question_options
+		WHERE question_id = ? AND is_correct = 1
+		ORDER BY sort_order
+	`, questionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer correctRows.Close()
+
+	var correctAnswers []string
+	for correctRows.Next() {
+		var text string
+		if err := correctRows.Scan(&text); err != nil {
+			return nil, nil, err
+		}
+		correctAnswers = append(correctAnswers, text)
+	}
+
+	return userAnswers, correctAnswers, nil
+}
+
+func joinAnswerTexts(values []string) string {
+	if len(values) == 0 {
+		return "(no answer)"
+	}
+	return strings.Join(values, ", ")
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }

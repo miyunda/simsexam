@@ -1,0 +1,8 @@
+=== RUN   TestHomeRendersPublishedSubject
+--- PASS: TestHomeRendersPublishedSubject (0.01s)
+=== RUN   TestExamFlowPerfectScore
+--- PASS: TestExamFlowPerfectScore (0.01s)
+=== RUN   TestExamFlowShowsIncorrectReview
+--- PASS: TestExamFlowShowsIncorrectReview (0.01s)
+PASS
+ok  	simsexam/internal/handlers	0.734s

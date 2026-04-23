@@ -1,0 +1,52 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Import Markdown</h1>
+            <p class="subtitle">Upload a subject Markdown file or paste Markdown directly.</p>
+        </div>
+        <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+    </div>
+
+    {{if .Errors}}
+    <div class="alert-card alert-error">
+        <strong>Import blocked</strong>
+        <ul class="alert-list">
+            {{range .Errors}}
+            <li>{{.}}</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    {{if .Warnings}}
+    <div class="alert-card alert-warning">
+        <strong>Warnings</strong>
+        <ul class="alert-list">
+            {{range .Warnings}}
+            <li>{{.}}</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    <form action="/admin/import" method="POST" enctype="multipart/form-data" class="admin-form-card">
+        <div class="form-section">
+            <label for="markdown_file">Markdown File</label>
+            <input id="markdown_file" type="file" name="markdown_file" accept=".md,text/markdown">
+            <p class="table-subtext">Use this for normal import files.</p>
+        </div>
+
+        <div class="form-section">
+            <label for="markdown_text">Markdown Text</label>
+            <textarea id="markdown_text" name="markdown_text" rows="20" placeholder="# Subject: ...">{{.MarkdownText}}</textarea>
+            <p class="table-subtext">Useful for quick edits or trying a draft without creating a file.</p>
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn-api primary">Validate And Import</button>
+        </div>
+    </form>
+</section>
+{{end}}

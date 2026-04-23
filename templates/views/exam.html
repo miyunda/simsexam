@@ -15,10 +15,9 @@
             <input type="hidden" name="current_index" value="{{.CurrentIndex}}">
 
             <div class="options-grid">
-                {{$qType := .Question.Type}}
                 {{range .Question.Options}}
                 <label class="option-card">
-                    <input type="{{if le (len $qType) 7}}radio{{else}}checkbox{{end}}" name="option_id" value="{{.ID}}"
+                    <input type="{{if eq $.Question.Type "single"}}radio{{else}}checkbox{{end}}" name="option_id" value="{{.ID}}"
                         required>
                     <span class="option-content">
                         <span class="option-text">{{.Text}}</span>
