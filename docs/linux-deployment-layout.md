@@ -17,6 +17,7 @@
   - `simsexam`
   - `simsexam-migrate`
   - `simsexam-bootstrapv1`
+- 默认演示 seed 已内嵌在程序内，不依赖服务器上的 `docs/examples/se-demo.md`
 
 ## 1. 标准目录布局
 
@@ -183,7 +184,7 @@ curl http://127.0.0.1:6080/
 /var/lib/simsexam/simsexam_v1.db
 ```
 
-如果该文件不存在，推荐先用 release 包内自带的 `simsexam-migrate` 和 `simsexam-bootstrapv1` 显式完成初始化，再启动服务。
+如果该文件不存在，推荐先用 release 包内自带的 `simsexam-migrate` 和 `simsexam-bootstrapv1` 显式完成初始化，再启动服务。默认演示题由程序内嵌提供，不需要额外上传 `se-demo.md`。
 
 ## 7. 日志规范
 

@@ -12,9 +12,7 @@ func TestPrepareV1DatabaseImportsDefaultSeedOnce(t *testing.T) {
 	db := openBootstrapTestDB(t)
 	defer db.Close()
 
-	first, err := PrepareV1Database(context.Background(), db, V1BootstrapOptions{
-		SeedFiles: []string{filepath.Join("..", "..", "docs", "examples", "se-demo.md")},
-	})
+	first, err := PrepareV1Database(context.Background(), db, V1BootstrapOptions{})
 	if err != nil {
 		t.Fatalf("first PrepareV1Database failed: %v", err)
 	}
@@ -22,9 +20,7 @@ func TestPrepareV1DatabaseImportsDefaultSeedOnce(t *testing.T) {
 		t.Fatalf("expected 1 applied seed on first run, got %d", len(first.AppliedSeeds))
 	}
 
-	second, err := PrepareV1Database(context.Background(), db, V1BootstrapOptions{
-		SeedFiles: []string{filepath.Join("..", "..", "docs", "examples", "se-demo.md")},
-	})
+	second, err := PrepareV1Database(context.Background(), db, V1BootstrapOptions{})
 	if err != nil {
 		t.Fatalf("second PrepareV1Database failed: %v", err)
 	}
