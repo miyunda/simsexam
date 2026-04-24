@@ -26,4 +26,24 @@ jobs:
         run: make test
 
       - name: Build
-        run: make build
+        env:
+          COMMIT: ${{ github.sha }}
+        run: |
+          SHORT_COMMIT="${COMMIT::7}"
+          BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          make build VERSION="ci-${SHORT_COMMIT}" COMMIT="$SHORT_COMMIT" BUILD_TIME="$BUILD_TIME"
+
+      - name: Prepare artifact
+        env:
+          COMMIT: ${{ github.sha }}
+        run: |
+          SHORT_COMMIT="${COMMIT::7}"
+          mkdir -p dist
+          cp bin/simsexam "dist/simsexam-ci-${SHORT_COMMIT}-linux-amd64"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simsexam-ci-${{ github.sha }}
+          path: dist/simsexam-ci-*-linux-amd64
+          if-no-files-found: error

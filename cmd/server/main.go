@@ -2,14 +2,24 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"simsexam/internal/app"
+	"simsexam/internal/buildinfo"
 	"simsexam/internal/config"
 )
 
 func main() {
+	versionFlag := flag.Bool("version", false, "print version information")
+	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(buildinfo.Summary())
+		return
+	}
+
 	cfg := config.LoadServerConfig()
 
 	serverApp, err := app.NewServerApp(context.Background(), cfg)

@@ -11,6 +11,7 @@ A web application for simulating exams.
 ```bash
 make test
 make build
+make version
 make bootstrap
 make run
 ```
@@ -30,6 +31,17 @@ make import IMPORT_FILE=./docs/examples/se-demo.md DB=./tmp/dev.db
 make validate IMPORT_FILE=./docs/examples/se-demo.md
 make import IMPORT_FILE=./docs/examples/se-demo.md
 ```
+
+## Versioning
+
+`simsexam` embeds build metadata into the server binary.
+
+```bash
+make version
+./bin/simsexam --version
+```
+
+Official releases are controlled by Git tags such as `v0.1.0`. Pushing a version tag triggers the GitHub `Release` workflow, which publishes downloadable release assets. See [versioning-and-releases.md](/Users/yu/repos/simsexam/docs/versioning-and-releases.md:1).
 
 ## License
 [License Info]
