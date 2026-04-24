@@ -51,13 +51,30 @@ git push origin v0.1.0
 3. GitHub Actions `Release` workflow will:
    - verify formatting
    - run tests
-   - build the Linux AMD64 server binary
+   - build the Linux AMD64 release binaries
    - package `simsexam-${VERSION}-linux-amd64.tar.gz`
    - generate `simsexam-${VERSION}-SHA256SUMS.txt`
    - publish a GitHub Release with downloadable assets
+
+Current release package contents:
+
+- `simsexam`
+- `simsexam-migrate`
+- `simsexam-bootstrapv1`
 
 ## CI Artifacts vs Releases
 
 - `CI` artifacts are for branch and pull-request validation
 - `Release` assets are for formal versioned distribution
 - Only Git tags like `v0.1.0` should produce official downloadable release binaries
+
+## Tag Discipline
+
+Do not replace or silently mutate an existing published release tag.
+
+If release contents change in a user-visible or deployment-relevant way, publish a new version tag.
+
+Examples:
+
+- `v0.1.0`: first formal release
+- `v0.1.1`: same release line, but improved packaging or deployment tooling

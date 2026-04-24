@@ -93,6 +93,10 @@
 5. 重启 `systemd` 服务
 6. 做最小冒烟验证
 
+更完整的单机目录布局和 `systemd` 规范见：
+
+- [linux-deployment-layout.md](/Users/yu/repos/simsexam/docs/linux-deployment-layout.md:1)
+
 ## 6. 部署前人工检查
 
 即使 CI 通过，部署前仍建议人工确认：
