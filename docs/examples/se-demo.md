@@ -3,7 +3,7 @@
 ## Meta
 - slug: se-demo
 - title: SE Demo Subject
-- description: 用于验证导入器和首次运行 seed 的示例题库
+- description: Sample question bank used to validate the importer and first-run seed flow
 - duration_minutes: 20
 - question_count: 2
 - access_level: free

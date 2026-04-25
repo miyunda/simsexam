@@ -44,15 +44,18 @@ make version
 2. Create and push a release tag, for example:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+VERSION="vX.Y.Z"
+OS="linux"
+ARCH="amd64"
+git tag "$VERSION"
+git push origin "$VERSION"
 ```
 
 3. GitHub Actions `Release` workflow will:
    - verify formatting
    - run tests
-   - build the Linux AMD64 release binaries
-   - package `simsexam-${VERSION}-linux-amd64.tar.gz`
+   - build the current official release target, `linux-amd64`
+   - package `simsexam-${VERSION}-${OS}-${ARCH}.tar.gz`
    - generate `simsexam-${VERSION}-SHA256SUMS.txt`
    - publish a GitHub Release with downloadable assets
 
@@ -61,12 +64,22 @@ Current release package contents:
 - `simsexam`
 - `simsexam-migrate`
 - `simsexam-bootstrapv1`
+- `simsexam.service.template`
+- `simsexam.env.example`
+- `templates/`
+- `static/`
+
+Current official release target:
+
+- `linux-amd64`
+
+The release naming scheme already reserves `OS` and `ARCH` in package names so future targets such as `linux-arm64` can be added without changing deployment conventions.
 
 ## CI Artifacts vs Releases
 
 - `CI` artifacts are for branch and pull-request validation
 - `Release` assets are for formal versioned distribution
-- Only Git tags like `v0.1.0` should produce official downloadable release binaries
+- Only Git tags matching the release format, such as `vX.Y.Z`, should produce official downloadable release binaries
 
 ## Tag Discipline
 

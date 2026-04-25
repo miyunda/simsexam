@@ -1,39 +1,63 @@
-# simsexam Linux 部署规范
+# simsexam Linux Deployment Layout
 
-本文档定义 `simsexam` 在单机 Linux 服务器上的标准目录布局、配置位置、日志方式和部署步骤。
+This document defines the standard directory layout, configuration locations, logging approach, and deployment steps for `simsexam` on a single Linux server.
 
-当前目标：
+Current target:
 
-- 单机部署
-- `systemd` 托管
-- 应用仅监听 `127.0.0.1:6080`
-- SQLite 作为本地持久化数据库
-- 反向代理负责公网入口
+- single-host deployment
+- `systemd` process supervision
+- application listens only on `127.0.0.1:6080`
+- SQLite for local persistent storage
+- reverse proxy handles public traffic
 
-适用前提：
+Assumptions:
 
-- 你从 GitHub Release 下载的是 `simsexam-<version>-linux-amd64.tar.gz`
-- 该压缩包内包含：
+- You download `simsexam-<version>-<os>-<arch>.tar.gz` from GitHub Releases
+- The archive expands into a self-contained application bundle directory
+- The bundle contains:
   - `simsexam`
   - `simsexam-migrate`
   - `simsexam-bootstrapv1`
-- 默认演示 seed 已内嵌在程序内，不依赖服务器上的 `docs/examples/se-demo.md`
+  - `simsexam.service.template`
+  - `simsexam.env.example`
+  - `templates/`
+  - `static/`
+- The default demo seed is embedded in the binaries and does not require `docs/examples/se-demo.md` on the server
 
-## 1. 标准目录布局
+## 0. Shell Variables
 
-建议统一采用以下目录：
+Use shell variables so the same commands work across releases:
+
+```bash
+VERSION="vX.Y.Z"
+OS="linux"
+ARCH="amd64"
+ARCHIVE="simsexam-${VERSION}-${OS}-${ARCH}.tar.gz"
+BUNDLE_DIR="simsexam-${VERSION}-${OS}-${ARCH}"
+RELEASE_DIR="/opt/simsexam/releases/${VERSION}"
+CURRENT_LINK="/opt/simsexam/current"
+DB_PATH="/var/lib/simsexam/simsexam_v1.db"
+```
+
+When upgrading, change `VERSION` to the target release and reuse the same pattern. The current official release build target is `linux-amd64`.
+
+## 1. Standard Directory Layout
+
+Use this layout consistently:
 
 ```text
 /opt/simsexam/
-  bin/
-    simsexam -> /opt/simsexam/releases/v0.1.0/simsexam
-    simsexam-migrate -> /opt/simsexam/releases/v0.1.0/simsexam-migrate
-    simsexam-bootstrapv1 -> /opt/simsexam/releases/v0.1.0/simsexam-bootstrapv1
+  current -> /opt/simsexam/releases/<version>/simsexam-<version>-<os>-<arch>
   releases/
-    v0.1.0/
-      simsexam
-      simsexam-migrate
-      simsexam-bootstrapv1
+    <version>/
+      simsexam-<version>-<os>-<arch>/
+        simsexam
+        simsexam-migrate
+        simsexam-bootstrapv1
+        simsexam.service.template
+        simsexam.env.example
+        templates/
+        static/
 
 /etc/simsexam/
   simsexam.env
@@ -42,38 +66,34 @@
   simsexam_v1.db
 
 /var/log/simsexam/
-  README
 ```
 
-职责约定：
+Responsibility of each path:
 
 - `/opt/simsexam/releases/<version>/`
-  - 存放每个版本对应的只读二进制文件
-- `/opt/simsexam/bin/simsexam`
-  - 指向当前启用版本的稳定软链接
-- `/opt/simsexam/bin/simsexam-migrate`
-  - 指向当前启用版本的数据库 migration 工具
-- `/opt/simsexam/bin/simsexam-bootstrapv1`
-  - 指向当前启用版本的数据库初始化与 seed 导入工具
+  - immutable extracted release bundle for a specific version
+- `/opt/simsexam/current`
+  - stable symlink to the active release bundle
 - `/etc/simsexam/simsexam.env`
-  - 存放运行时环境变量
+  - runtime configuration
 - `/var/lib/simsexam/simsexam_v1.db`
-  - 存放 SQLite 数据文件
+  - SQLite database file
 - `/var/log/simsexam/`
-  - 预留日志目录；当前主日志仍以 `journald` 为准
+  - reserved log directory; `journald` remains the primary log sink
 
-## 2. 为什么这样布局
+## 2. Why This Layout
 
-这样做有几个直接好处：
+This layout keeps deployment predictable:
 
-- 升级时只需要替换版本目录或切换软链接
-- 程序和数据分离，避免升级误伤数据库
-- 配置独立于程序目录，便于审计和备份
-- 回滚时可以快速切回旧版本二进制
+- binaries and runtime assets stay together
+- relative paths for `templates/` and `static/` work reliably
+- upgrades only need a new release directory and a symlink switch
+- configuration and data stay outside the application bundle
+- rollback is just a symlink change plus service restart
 
-## 3. 标准环境变量文件
+## 3. Standard Environment File
 
-建议在 `/etc/simsexam/simsexam.env` 中写入：
+Create `/etc/simsexam/simsexam.env` with:
 
 ```bash
 SIMSEXAM_ADDR=127.0.0.1:6080
@@ -81,36 +101,37 @@ SIMSEXAM_DB_PATH=/var/lib/simsexam/simsexam_v1.db
 SIMSEXAM_IMPORT_SOURCE_TYPE=manual
 ```
 
-说明：
+You can start from the bundled `simsexam.env.example`.
+
+Field notes:
 
 - `SIMSEXAM_ADDR`
-  - 固定监听回环地址，不直接暴露公网端口
+  - keep the application bound to loopback only
 - `SIMSEXAM_DB_PATH`
-  - 指向标准数据库位置
+  - points to the canonical database file
 - `SIMSEXAM_IMPORT_SOURCE_TYPE`
-  - 当前保留为可配置项
+  - retained as a configurable runtime value
 
-## 4. systemd 单元文件位置
+## 4. systemd Unit Location
 
-建议系统服务文件路径为：
+Install the service unit at:
 
 ```text
 /etc/systemd/system/simsexam.service
 ```
 
-标准模板见：
+The release bundle includes a ready-to-copy template:
 
-- [deploy/systemd/simsexam.service](/Users/yu/repos/simsexam/deploy/systemd/simsexam.service:1)
+- `simsexam.service.template`
 
-## 5. 标准首次部署步骤
+## 5. First Deployment Steps
 
-### 5.1 创建目录和用户
+### 5.1 Create User and Directories
 
 ```bash
 sudo useradd --system --home /opt/simsexam --shell /usr/sbin/nologin simsexam || true
 
-sudo mkdir -p /opt/simsexam/bin
-sudo mkdir -p /opt/simsexam/releases/v0.1.0
+sudo mkdir -p "$RELEASE_DIR"
 sudo mkdir -p /etc/simsexam
 sudo mkdir -p /var/lib/simsexam
 sudo mkdir -p /var/log/simsexam
@@ -119,54 +140,54 @@ sudo chown -R simsexam:simsexam /opt/simsexam /var/lib/simsexam /var/log/simsexa
 sudo chown root:root /etc/simsexam
 ```
 
-### 5.2 安装 release 包
+### 5.2 Install the Release Bundle
 
-将 release 页面下载的压缩包上传到服务器后：
+After uploading the release archive to the server:
 
 ```bash
-tar -xzf simsexam-v0.1.0-linux-amd64.tar.gz
-sudo mv simsexam /opt/simsexam/releases/v0.1.0/simsexam
-sudo mv simsexam-migrate /opt/simsexam/releases/v0.1.0/simsexam-migrate
-sudo mv simsexam-bootstrapv1 /opt/simsexam/releases/v0.1.0/simsexam-bootstrapv1
-sudo chmod 0755 /opt/simsexam/releases/v0.1.0/simsexam
-sudo chmod 0755 /opt/simsexam/releases/v0.1.0/simsexam-migrate
-sudo chmod 0755 /opt/simsexam/releases/v0.1.0/simsexam-bootstrapv1
-sudo ln -sfn /opt/simsexam/releases/v0.1.0/simsexam /opt/simsexam/bin/simsexam
-sudo ln -sfn /opt/simsexam/releases/v0.1.0/simsexam-migrate /opt/simsexam/bin/simsexam-migrate
-sudo ln -sfn /opt/simsexam/releases/v0.1.0/simsexam-bootstrapv1 /opt/simsexam/bin/simsexam-bootstrapv1
+tar -xzf "$ARCHIVE"
+sudo mv "$BUNDLE_DIR" "$RELEASE_DIR/"
+sudo ln -sfn "${RELEASE_DIR}/${BUNDLE_DIR}" "$CURRENT_LINK"
+sudo chown -R simsexam:simsexam "$RELEASE_DIR"
 ```
 
-### 5.3 写入环境变量文件
+### 5.3 Write the Environment File
+
+Start from the bundled example file:
 
 ```bash
-sudo tee /etc/simsexam/simsexam.env >/dev/null <<'EOF'
+sudo cp /opt/simsexam/current/simsexam.env.example /etc/simsexam/simsexam.env
+```
+
+Edit `/etc/simsexam/simsexam.env` if needed. The default content is:
+
+```bash
 SIMSEXAM_ADDR=127.0.0.1:6080
 SIMSEXAM_DB_PATH=/var/lib/simsexam/simsexam_v1.db
 SIMSEXAM_IMPORT_SOURCE_TYPE=manual
-EOF
 ```
 
-### 5.4 安装 systemd 服务
+### 5.4 Install the systemd Unit
 
-将仓库中的模板复制到系统目录：
+Copy the template from the extracted release bundle:
 
 ```bash
-sudo cp deploy/systemd/simsexam.service /etc/systemd/system/simsexam.service
+sudo cp /opt/simsexam/current/simsexam.service.template /etc/systemd/system/simsexam.service
 sudo systemctl daemon-reload
 ```
 
-### 5.5 初始化数据库
+### 5.5 Initialize the Database
 
-首次部署建议显式执行一次初始化，而不是直接盲目启动服务：
+For first deployment, explicitly initialize the database before starting the service:
 
 ```bash
-sudo -u simsexam /opt/simsexam/bin/simsexam-migrate -dsn /var/lib/simsexam/simsexam_v1.db
-sudo -u simsexam /opt/simsexam/bin/simsexam-bootstrapv1 -dsn /var/lib/simsexam/simsexam_v1.db
+sudo -u simsexam /opt/simsexam/current/simsexam-migrate -dsn "$DB_PATH"
+sudo -u simsexam /opt/simsexam/current/simsexam-bootstrapv1 -dsn "$DB_PATH"
 ```
 
-如果你只想做最小首装，一般直接执行 `simsexam-bootstrapv1` 也可以，因为它本身会先准备 v1 数据库。
+If you want the minimum first-run path, `simsexam-bootstrapv1` is usually enough because it prepares the v1 schema before seeding.
 
-### 5.6 启动服务
+### 5.6 Start the Service
 
 ```bash
 sudo systemctl enable --now simsexam
@@ -174,23 +195,21 @@ sudo systemctl status simsexam
 curl http://127.0.0.1:6080/
 ```
 
-## 6. 首次启动时数据库放在哪里
+## 6. Database File Location
 
-数据库文件由 `SIMSEXAM_DB_PATH` 控制。
+The database path is controlled by `SIMSEXAM_DB_PATH`.
 
-按本规范部署后，数据库文件固定在：
+Under this deployment standard, the file lives at:
 
 ```text
 /var/lib/simsexam/simsexam_v1.db
 ```
 
-如果该文件不存在，推荐先用 release 包内自带的 `simsexam-migrate` 和 `simsexam-bootstrapv1` 显式完成初始化，再启动服务。默认演示题由程序内嵌提供，不需要额外上传 `se-demo.md`。
+If the file does not exist, prefer explicit initialization with the bundled `simsexam-migrate` and `simsexam-bootstrapv1` binaries before starting the service.
 
-## 7. 日志规范
+## 7. Logging
 
-当前推荐把 `journald` 作为主日志入口。
-
-查看方法：
+Use `journald` as the primary log entry point:
 
 ```bash
 sudo systemctl status simsexam
@@ -198,56 +217,66 @@ sudo journalctl -u simsexam -n 100 --no-pager
 sudo journalctl -u simsexam -f
 ```
 
-`/var/log/simsexam/` 目前主要是预留目录，不作为首选日志入口。
+`/var/log/simsexam/` is reserved for future use and should not be treated as the primary runtime log location today.
 
-## 8. 升级步骤
+## 8. Upgrade Steps
 
-以升级到 `v0.1.1` 为例：
+Example upgrade flow:
 
 ```bash
-sudo mkdir -p /opt/simsexam/releases/v0.1.1
-tar -xzf simsexam-v0.1.1-linux-amd64.tar.gz
-sudo mv simsexam /opt/simsexam/releases/v0.1.1/simsexam
-sudo mv simsexam-migrate /opt/simsexam/releases/v0.1.1/simsexam-migrate
-sudo mv simsexam-bootstrapv1 /opt/simsexam/releases/v0.1.1/simsexam-bootstrapv1
-sudo chmod 0755 /opt/simsexam/releases/v0.1.1/simsexam
-sudo chmod 0755 /opt/simsexam/releases/v0.1.1/simsexam-migrate
-sudo chmod 0755 /opt/simsexam/releases/v0.1.1/simsexam-bootstrapv1
-sudo ln -sfn /opt/simsexam/releases/v0.1.1/simsexam /opt/simsexam/bin/simsexam
-sudo ln -sfn /opt/simsexam/releases/v0.1.1/simsexam-migrate /opt/simsexam/bin/simsexam-migrate
-sudo ln -sfn /opt/simsexam/releases/v0.1.1/simsexam-bootstrapv1 /opt/simsexam/bin/simsexam-bootstrapv1
-sudo -u simsexam /opt/simsexam/bin/simsexam-migrate -dsn /var/lib/simsexam/simsexam_v1.db
+VERSION="vX.Y.Z"
+OS="linux"
+ARCH="amd64"
+ARCHIVE="simsexam-${VERSION}-${OS}-${ARCH}.tar.gz"
+BUNDLE_DIR="simsexam-${VERSION}-${OS}-${ARCH}"
+RELEASE_DIR="/opt/simsexam/releases/${VERSION}"
+CURRENT_LINK="/opt/simsexam/current"
+DB_PATH="/var/lib/simsexam/simsexam_v1.db"
+
+tar -xzf "$ARCHIVE"
+sudo mkdir -p "$RELEASE_DIR"
+sudo mv "$BUNDLE_DIR" "$RELEASE_DIR/"
+sudo chown -R simsexam:simsexam "$RELEASE_DIR"
+
+sudo ln -sfn "${RELEASE_DIR}/${BUNDLE_DIR}" "$CURRENT_LINK"
+sudo -u simsexam /opt/simsexam/current/simsexam-migrate -dsn "$DB_PATH"
 sudo systemctl restart simsexam
 ```
 
-升级后建议立即检查：
+Recommended checks immediately after upgrade:
 
 ```bash
 sudo systemctl status simsexam
 curl http://127.0.0.1:6080/
 ```
 
-## 9. 回滚步骤
+## 9. Rollback Steps
 
-如果新版本异常，可以把软链接切回旧版本：
+If the new release is faulty, switch `current` back to the previous release bundle:
 
 ```bash
-sudo ln -sfn /opt/simsexam/releases/v0.1.0/simsexam /opt/simsexam/bin/simsexam
+PREVIOUS_VERSION="vPREVIOUS"
+OS="linux"
+ARCH="amd64"
+PREVIOUS_BUNDLE_DIR="simsexam-${PREVIOUS_VERSION}-${OS}-${ARCH}"
+PREVIOUS_RELEASE_DIR="/opt/simsexam/releases/${PREVIOUS_VERSION}"
+
+sudo ln -sfn "${PREVIOUS_RELEASE_DIR}/${PREVIOUS_BUNDLE_DIR}" /opt/simsexam/current
 sudo systemctl restart simsexam
 ```
 
-## 10. 反向代理边界
+## 10. Reverse Proxy Boundary
 
-`simsexam` 自身只监听：
+`simsexam` itself should only listen on:
 
 ```text
 127.0.0.1:6080
 ```
 
-公网访问应通过 Nginx 或 Caddy 转发到该地址。
+Public traffic should be terminated and forwarded by Nginx or Caddy.
 
-这意味着：
+That means:
 
-- `simsexam` 不直接暴露在公网
-- TLS 终止放在反向代理层
-- 未来如果改为多实例部署，再重新评估入口层设计
+- `simsexam` is not directly exposed on a public interface
+- TLS termination belongs in the reverse proxy layer
+- if the system later moves to multi-instance deployment, the ingress design should be revisited then

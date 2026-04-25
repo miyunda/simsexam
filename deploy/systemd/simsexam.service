@@ -3,12 +3,15 @@ Description=simsexam web service
 After=network.target
 
 [Service]
+# Copy this file to /etc/systemd/system/simsexam.service before enabling the service.
+# Keep runtime settings in /etc/simsexam/simsexam.env rather than editing this file.
+# The "current" symlink should point at the active extracted release bundle.
 Type=simple
 User=simsexam
 Group=simsexam
-WorkingDirectory=/opt/simsexam
+WorkingDirectory=/opt/simsexam/current
 EnvironmentFile=-/etc/simsexam/simsexam.env
-ExecStart=/opt/simsexam/bin/simsexam
+ExecStart=/opt/simsexam/current/simsexam
 Restart=always
 RestartSec=3
 Environment=SIMSEXAM_ADDR=127.0.0.1:6080

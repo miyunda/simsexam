@@ -1,167 +1,162 @@
-# simsexam 测试与部署约定
+# simsexam Testing And Deployment Policy
 
-本文档定义 `SE` 当前阶段的测试、提交流程和部署方法。
+This document defines the current testing workflow, branch policy, and deployment baseline for `simsexam`.
 
-## 1. 当前部署形态
+## 1. Current Deployment Shape
 
-当前约定：
+Current assumptions:
 
-- 服务运行在一台 Linux 服务器上
-- 应用只监听回环地址：`127.0.0.1:6080`
-- 外部流量通过反向代理接入，例如 Nginx 或 Caddy
+- the service runs on a single Linux server
+- the application listens only on `127.0.0.1:6080`
+- public traffic is handled by a reverse proxy such as Nginx or Caddy
 
-当前不做的事情：
+Out of scope for now:
 
-- 不直接暴露公网监听端口
-- 不假设多实例部署
-- 不假设 Kubernetes
+- direct public listening by the application process
+- multi-instance deployment
+- Kubernetes assumptions
 
-备注：
+Current priority:
 
-- 如果以后业务规模增长，可以再评估容器化和 K8s
-- 当前阶段优先保证可维护、可回滚、易排障
+- maintainability
+- rollback safety
+- straightforward troubleshooting
 
-## 2. 分支与提交流程
+## 2. Branch And Merge Policy
 
-强制约定：
+Required rules:
 
-- 所有提交和推送都不得直接进入 `main`
-- 所有开发工作必须在分支上进行
-- 只有通过测试并完成 review 的改动才允许发起 PR
-- `main` 只接受 PR 合并
+- never push directly to `main`
+- all work must happen on branches
+- only reviewed and tested changes should be proposed for merge
+- `main` only accepts pull request merges
 
-推荐分支命名：
+Recommended branch naming:
 
 - `codex/<topic>`
 - `feature/<topic>`
 - `fix/<topic>`
 
-## 3. PR 合并前最低要求
+## 3. Minimum PR Requirements
 
-每个 PR 在合并前至少必须满足：
+Every pull request must pass at least:
 
-- `make test` 通过
-- `make build` 通过
+- `make test`
+- `make build`
 
-建议逐步补充：
+Recommended future additions:
 
-- `gofmt` 检查
-- lint
-- 更细的集成测试
+- `gofmt` verification
+- linting
+- deeper integration coverage
 
-## 4. GitHub Actions 的使用原则
+## 4. GitHub Actions Policy
 
-当前结论：
+Current decision:
 
-- 使用 GitHub Actions 做 CI
-- 暂不使用 GitHub Actions 做生产自动部署
+- use GitHub Actions for CI
+- do not use GitHub Actions for production auto-deploy yet
 
-原因：
+Reasoning:
 
-- 当前项目还在快速重构阶段
-- 先把测试和编译自动化，比先上自动部署更重要
-- 部署先保持人工可控，更利于排查和回滚
+- the project is still evolving quickly
+- automated validation is more urgent than automated deployment
+- manual deployment remains easier to audit and roll back
 
-当前阶段 GitHub Actions 负责：
+Current GitHub Actions responsibilities:
 
-- 拉取代码
-- 配置 Go 环境
-- 运行 `make test`
-- 运行 `make build`
+- check out the repository
+- set up Go
+- run `make test`
+- run `make build`
+- publish CI artifacts and tagged release assets
 
-当前阶段 GitHub Actions 不负责：
+Current GitHub Actions does not do:
 
-- 自动发布到服务器
-- 自动替换生产进程
-- 自动执行生产数据库操作
+- deploy to servers automatically
+- replace running production processes
+- execute production database operations automatically
 
-## 5. 当前推荐部署流程
+## 5. Recommended Deployment Flow
 
-当前推荐使用：
+Recommended stack:
 
 - Linux
 - `systemd`
-- 反向代理
-- SQLite 数据库文件
+- reverse proxy
+- SQLite
 
-推荐部署步骤：
+Typical deployment steps:
 
-1. 在服务器上获取目标版本代码
-2. 执行 `make build`
-3. 执行 `make migrate` 或 `make bootstrap`
-4. 如有需要，执行 `make import`
-5. 重启 `systemd` 服务
-6. 做最小冒烟验证
+1. obtain the target release artifact
+2. install binaries on the server
+3. run `simsexam-migrate` or `simsexam-bootstrapv1`
+4. import additional content if needed
+5. restart the `systemd` service
+6. run a smoke test
 
-更完整的单机目录布局和 `systemd` 规范见：
+For the standard single-host directory layout and systemd flow, see:
 
 - [linux-deployment-layout.md](/Users/yu/repos/simsexam/docs/linux-deployment-layout.md:1)
 
-## 6. 部署前人工检查
+## 6. Manual Pre-Deployment Checks
 
-即使 CI 通过，部署前仍建议人工确认：
+Even when CI passes, confirm at least:
 
-- 首页可打开
-- 能开始考试
-- 能提交答案
-- 后台可导入 Markdown
-- 后台可编辑单题
+- the home page loads
+- an exam can be started
+- answers can be submitted
+- the admin import flow works
+- single-question editing works
 
-## 7. 运行方式建议
+## 7. Runtime Conventions
 
-应用进程建议由 `systemd` 管理。
+The application should be managed by `systemd`.
 
-建议：
+Recommended conventions:
 
-- 二进制放在固定路径，例如 `/opt/simsexam/bin/simsexam`
-- 工作目录固定，例如 `/opt/simsexam/current`
-- 数据库文件放在固定目录，例如 `/var/lib/simsexam/simsexam_v1.db`
-- 日志通过 `journalctl` 查看
+- an extracted self-contained release bundle under `/opt/simsexam/releases/<version>/`
+- a stable `/opt/simsexam/current` symlink pointing to the active bundle
+- database file under `/var/lib/simsexam/simsexam_v1.db`
+- logs inspected through `journalctl`
 
-## 8. 配置建议
+## 8. Configuration Baseline
 
-虽然当前代码里还有部分固定值，部署层面建议尽快收敛到配置项：
+The deployment baseline should remain:
 
-- 监听地址
-- 数据库路径
-- 环境类型
-- 日志级别
+- listen on `127.0.0.1:6080`
 
-当前部署基线应保持：
-
-- 默认监听 `127.0.0.1:6080`
-
-当前代码中的运行配置入口：
+Current runtime configuration entry points:
 
 - `SIMSEXAM_ADDR`
 - `SIMSEXAM_DB_PATH`
 - `SIMSEXAM_IMPORT_SOURCE_TYPE`
 
-它们由 `internal/config` 统一加载，`server`、`migrate`、`bootstrapv1`、`importer` 共用这套默认值体系。
+These are loaded centrally through `internal/config` and shared by `server`, `migrate`, `bootstrapv1`, and `importer`.
 
-## 9. 未来演进原则
+## 9. Future Evolution Order
 
-如果以后要升级部署体系，推荐顺序：
+If deployment complexity grows later, use this order:
 
-1. 先完善 CI
-2. 再补发布包或版本化产物
-3. 再评估自动部署
-4. 最后才考虑容器编排或 K8s
+1. improve CI first
+2. improve release packaging and versioned assets
+3. evaluate deployment automation
+4. only then consider container orchestration or Kubernetes
 
-不建议当前阶段就引入：
+Not recommended at the current stage:
 
-- 复杂 CD 流程
-- Kubernetes 专用部署
-- 多环境自动编排
+- complex CD pipelines
+- Kubernetes-specific deployment work
+- multi-environment orchestration
 
-## 10. 当前结论摘要
+## 10. Current Summary
 
-当前正式约定如下：
+Current working policy:
 
-1. 生产服务运行在 Linux 单机。
-2. 应用监听 `127.0.0.1:6080`。
-3. 所有改动必须走分支和 PR。
-4. 禁止直接向 `main` 提交。
-5. PR 合并前必须通过 `make test` 和 `make build`。
-6. GitHub Actions 当前只做 CI，不做生产自动部署。
-7. 生产部署当前采用人工、可审计、可回滚的单机流程。
+1. Production runs on a single Linux host.
+2. The application listens on `127.0.0.1:6080`.
+3. All changes go through branches and pull requests.
+4. Direct pushes to `main` are not allowed.
+5. Pull requests must pass `make test` and `make build`.
+6. GitHub Actions currently handles CI and release packaging, not production deployment.
+7. Deployment remains manual, auditable, and rollback-friendly.

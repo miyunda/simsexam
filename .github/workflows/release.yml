@@ -42,14 +42,16 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          mkdir -p dist/package
-          cp bin/simsexam dist/package/simsexam
-          cp bin/simsexam-migrate dist/package/simsexam-migrate
-          cp bin/simsexam-bootstrapv1 dist/package/simsexam-bootstrapv1
-          tar -C dist/package -czf "dist/simsexam-${VERSION}-linux-amd64.tar.gz" \
-            simsexam \
-            simsexam-migrate \
-            simsexam-bootstrapv1
+          PACKAGE_ROOT="dist/simsexam-${VERSION}-linux-amd64"
+          mkdir -p "$PACKAGE_ROOT"
+          cp bin/simsexam "$PACKAGE_ROOT/simsexam"
+          cp bin/simsexam-migrate "$PACKAGE_ROOT/simsexam-migrate"
+          cp bin/simsexam-bootstrapv1 "$PACKAGE_ROOT/simsexam-bootstrapv1"
+          cp deploy/systemd/simsexam.service "$PACKAGE_ROOT/simsexam.service.template"
+          cp deploy/config/simsexam.env.example "$PACKAGE_ROOT/simsexam.env.example"
+          cp -R templates "$PACKAGE_ROOT/templates"
+          cp -R static "$PACKAGE_ROOT/static"
+          tar -C dist -czf "dist/simsexam-${VERSION}-linux-amd64.tar.gz" "simsexam-${VERSION}-linux-amd64"
           sha256sum "dist/simsexam-${VERSION}-linux-amd64.tar.gz" > "dist/simsexam-${VERSION}-SHA256SUMS.txt"
 
       - name: Publish GitHub release
