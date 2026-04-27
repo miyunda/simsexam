@@ -3,7 +3,7 @@
 ## Meta
 - slug: se-demo
 - title: SE Demo Subject
-- description: Sample question bank used to validate the importer and first-run seed flow
+- description: Sample question bank for helping users get familiar with the exam simulation flow
 - duration_minutes: 20
 - question_count: 2
 - access_level: free

@@ -178,7 +178,7 @@ func validateQuestion(q Question, report *ValidationReport) {
 			Message: "at least two options are required",
 		})
 	}
-	if len(q.Options) != 4 {
+	if len(q.Options) < 4 {
 		report.Warnings = append(report.Warnings, ValidationMessage{
 			Line:    q.Line,
 			Field:   "question.options",

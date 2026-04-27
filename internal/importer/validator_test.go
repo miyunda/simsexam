@@ -75,3 +75,40 @@ func TestValidateDocumentRejectsDuplicateQuestionKeys(t *testing.T) {
 		t.Fatal("expected duplicate key validation error")
 	}
 }
+
+func TestValidateDocumentDoesNotWarnForFiveOptions(t *testing.T) {
+	doc := Document{
+		HeaderSubjectSlug: "se-demo",
+		Manifest: Manifest{
+			Slug:            "se-demo",
+			Title:           "SE Demo Subject",
+			DurationMinutes: 20,
+			QuestionCount:   1,
+			AccessLevel:     "free",
+			Status:          "published",
+		},
+		Questions: []Question{
+			{
+				Key:  "demo-005",
+				Type: "single",
+				Stem: "Question text",
+				Line: 143,
+				Options: []Option{
+					{Text: "A", IsCorrect: true},
+					{Text: "B", IsCorrect: false},
+					{Text: "C", IsCorrect: false},
+					{Text: "D", IsCorrect: false},
+					{Text: "E", IsCorrect: false},
+				},
+				Explanation: "Explanation text",
+			},
+		},
+	}
+
+	report := ValidateDocument(doc)
+	for _, warning := range report.Warnings {
+		if warning.Field == "question.options" && warning.Message == "four options are recommended" {
+			t.Fatalf("did not expect four-options warning for five-option question: %+v", warning)
+		}
+	}
+}

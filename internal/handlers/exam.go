@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	"fmt"
 	"html/template"
+	"math/rand"
 	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"simsexam/internal/database"
 	"simsexam/internal/models"
@@ -18,6 +20,9 @@ import (
 )
 
 var questionNumRegex = regexp.MustCompile(`(?i)^(?:question\s+)?\d+[:.]\s+`)
+var newOptionShuffleRand = func() *rand.Rand {
+	return rand.New(rand.NewSource(time.Now().UnixNano()))
+}
 
 func cleanQuestionText(text string) string {
 	return questionNumRegex.ReplaceAllString(text, "")
@@ -92,11 +97,21 @@ func StartExam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for idx, questionID := range questionIDs {
-		if _, err := tx.Exec(`
+		res, err := tx.Exec(`
 			INSERT INTO exam_questions (exam_id, question_id, position)
 			VALUES (?, ?, ?)
-		`, examID, questionID, idx+1); err != nil {
+		`, examID, questionID, idx+1)
+		if err != nil {
 			http.Error(w, "Failed to persist exam questions", http.StatusInternalServerError)
+			return
+		}
+		examQuestionID, err := res.LastInsertId()
+		if err != nil {
+			http.Error(w, "Failed to persist exam questions", http.StatusInternalServerError)
+			return
+		}
+		if err := persistExamQuestionOptionOrder(tx, examQuestionID, questionID); err != nil {
+			http.Error(w, "Failed to persist exam question option order", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -123,13 +138,16 @@ func GetQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var q models.Question
+	var (
+		q              models.Question
+		examQuestionID int
+	)
 	err = database.DB.QueryRow(`
-		SELECT q.id, q.subject_id, q.stem_markdown, q.type, COALESCE(q.explanation_markdown, '')
+		SELECT eq.id, q.id, q.subject_id, q.stem_markdown, q.type, COALESCE(q.explanation_markdown, '')
 		FROM exam_questions eq
 		JOIN questions q ON q.id = eq.question_id
 		WHERE eq.exam_id = ? AND eq.position = ?
-	`, examID, qIdx).Scan(&q.ID, &q.SubjectID, &q.Text, &q.Type, &q.Explanation)
+	`, examID, qIdx).Scan(&examQuestionID, &q.ID, &q.SubjectID, &q.Text, &q.Type, &q.Explanation)
 	if err != nil {
 		http.Error(w, "Question not found", http.StatusNotFound)
 		return
@@ -137,11 +155,12 @@ func GetQuestion(w http.ResponseWriter, r *http.Request) {
 	q.Text = cleanQuestionText(q.Text)
 
 	rows, err := database.DB.Query(`
-		SELECT id, question_id, content_markdown
-		FROM question_options
-		WHERE question_id = ?
-		ORDER BY sort_order
-	`, q.ID)
+		SELECT qo.id, qo.question_id, qo.content_markdown
+		FROM exam_question_options eqo
+		JOIN question_options qo ON qo.id = eqo.question_option_id
+		WHERE eqo.exam_question_id = ?
+		ORDER BY eqo.display_order
+	`, examQuestionID)
 	if err != nil {
 		http.Error(w, "Options error", http.StatusInternalServerError)
 		return
@@ -489,8 +508,10 @@ func loadReviewAnswers(tx *sql.Tx, examID, questionID int) ([]string, []string, 
 		FROM exam_answers ea
 		JOIN exam_answer_options eao ON eao.exam_answer_id = ea.id
 		JOIN question_options qo ON qo.id = eao.option_id
+		JOIN exam_questions eq ON eq.exam_id = ea.exam_id AND eq.question_id = ea.question_id
+		JOIN exam_question_options eqo ON eqo.exam_question_id = eq.id AND eqo.question_option_id = qo.id
 		WHERE ea.exam_id = ? AND ea.question_id = ?
-		ORDER BY qo.sort_order
+		ORDER BY eqo.display_order
 	`, examID, questionID)
 	if err != nil {
 		return nil, nil, err
@@ -507,11 +528,13 @@ func loadReviewAnswers(tx *sql.Tx, examID, questionID int) ([]string, []string, 
 	}
 
 	correctRows, err := tx.Query(`
-		SELECT content_markdown
-		FROM question_options
-		WHERE question_id = ? AND is_correct = 1
-		ORDER BY sort_order
-	`, questionID)
+		SELECT qo.content_markdown
+		FROM exam_questions eq
+		JOIN exam_question_options eqo ON eqo.exam_question_id = eq.id
+		JOIN question_options qo ON qo.id = eqo.question_option_id
+		WHERE eq.exam_id = ? AND eq.question_id = ? AND qo.is_correct = 1
+		ORDER BY eqo.display_order
+	`, examID, questionID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -541,4 +564,81 @@ func boolToInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+func persistExamQuestionOptionOrder(tx *sql.Tx, examQuestionID int64, questionID int) error {
+	shouldShuffle, err := shouldShuffleOptionsForQuestion(tx, questionID)
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(`
+		SELECT id
+		FROM question_options
+		WHERE question_id = ?
+		ORDER BY sort_order
+	`, questionID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var optionIDs []int
+	for rows.Next() {
+		var optionID int
+		if err := rows.Scan(&optionID); err != nil {
+			return err
+		}
+		optionIDs = append(optionIDs, optionID)
+	}
+	if len(optionIDs) == 0 {
+		return fmt.Errorf("question options not found")
+	}
+	if shouldShuffle {
+		optionIDs = shuffledOptionIDs(optionIDs, newOptionShuffleRand())
+	}
+
+	displayOrder := 1
+	for _, optionID := range optionIDs {
+		if _, err := tx.Exec(`
+			INSERT INTO exam_question_options (exam_question_id, question_option_id, display_order)
+			VALUES (?, ?, ?)
+		`, examQuestionID, optionID, displayOrder); err != nil {
+			return err
+		}
+		displayOrder++
+	}
+	return nil
+}
+
+func shouldShuffleOptionsForQuestion(tx *sql.Tx, questionID int) (bool, error) {
+	var (
+		subjectDefault int
+		override       sql.NullInt64
+	)
+	err := tx.QueryRow(`
+		SELECT s.shuffle_options_default, q.allow_option_shuffle
+		FROM questions q
+		JOIN subjects s ON s.id = q.subject_id
+		WHERE q.id = ?
+	`, questionID).Scan(&subjectDefault, &override)
+	if err != nil {
+		return false, err
+	}
+
+	if override.Valid {
+		return override.Int64 == 1, nil
+	}
+	return subjectDefault == 1, nil
+}
+
+func shuffledOptionIDs(optionIDs []int, rng *rand.Rand) []int {
+	shuffled := append([]int(nil), optionIDs...)
+	if len(shuffled) <= 1 || rng == nil {
+		return shuffled
+	}
+	rng.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
+	return shuffled
 }

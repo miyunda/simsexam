@@ -219,6 +219,27 @@ CREATE INDEX IF NOT EXISTS idx_user_question_stats_user_mastery ON user_question
 CREATE INDEX IF NOT EXISTS idx_subject_entitlements_user_subject ON subject_entitlements(user_id, subject_id);
 `,
 	},
+	{
+		Name: "0002_exam_option_order_foundation",
+		SQL: `
+ALTER TABLE subjects ADD COLUMN shuffle_options_default INTEGER NOT NULL DEFAULT 0 CHECK (shuffle_options_default IN (0, 1));
+ALTER TABLE questions ADD COLUMN allow_option_shuffle INTEGER CHECK (allow_option_shuffle IN (0, 1));
+
+CREATE TABLE IF NOT EXISTS exam_question_options (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	exam_question_id INTEGER NOT NULL,
+	question_option_id INTEGER NOT NULL,
+	display_order INTEGER NOT NULL CHECK (display_order > 0),
+	FOREIGN KEY(exam_question_id) REFERENCES exam_questions(id),
+	FOREIGN KEY(question_option_id) REFERENCES question_options(id),
+	UNIQUE(exam_question_id, question_option_id),
+	UNIQUE(exam_question_id, display_order)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_question_options_exam_question_display
+	ON exam_question_options(exam_question_id, display_order);
+`,
+	},
 }
 
 func OpenSQLite(dataSourceName string) (*sql.DB, error) {

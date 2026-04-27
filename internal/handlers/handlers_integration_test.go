@@ -104,6 +104,77 @@ func TestExamFlowShowsIncorrectReview(t *testing.T) {
 	}
 }
 
+func TestExamStartPersistsOptionDisplayOrder(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	examID := startExam(t, router, 1)
+
+	rows, err := database.DB.Query(`
+		SELECT eq.id, eq.question_id
+		FROM exam_questions eq
+		WHERE eq.exam_id = ?
+		ORDER BY eq.position
+	`, examID)
+	if err != nil {
+		t.Fatalf("query exam questions failed: %v", err)
+	}
+	defer rows.Close()
+
+	var seen int
+	for rows.Next() {
+		var examQuestionID int
+		var questionID int
+		if err := rows.Scan(&examQuestionID, &questionID); err != nil {
+			t.Fatalf("scan exam question failed: %v", err)
+		}
+		seen++
+
+		var persistedCount int
+		if err := database.DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM exam_question_options
+			WHERE exam_question_id = ?
+		`, examQuestionID).Scan(&persistedCount); err != nil {
+			t.Fatalf("count exam question options failed: %v", err)
+		}
+
+		var canonicalCount int
+		if err := database.DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM question_options
+			WHERE question_id = ?
+		`, questionID).Scan(&canonicalCount); err != nil {
+			t.Fatalf("count canonical options failed: %v", err)
+		}
+
+		if persistedCount != canonicalCount {
+			t.Fatalf("expected %d persisted option rows for exam_question %d, got %d", canonicalCount, examQuestionID, persistedCount)
+		}
+	}
+	if seen == 0 {
+		t.Fatal("expected at least one persisted exam question")
+	}
+
+	firstReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/exam/%d/question/1", examID), nil)
+	firstRec := httptest.NewRecorder()
+	router.ServeHTTP(firstRec, firstReq)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on first question render, got %d", firstRec.Code)
+	}
+
+	secondReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/exam/%d/question/1", examID), nil)
+	secondRec := httptest.NewRecorder()
+	router.ServeHTTP(secondRec, secondReq)
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on repeated question render, got %d", secondRec.Code)
+	}
+
+	if firstRec.Body.String() != secondRec.Body.String() {
+		t.Fatalf("expected repeated question renders to preserve option order")
+	}
+}
+
 func TestAdminSubjectsAndQuestionsPages(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
@@ -306,6 +377,50 @@ func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 	}
 	if revisionCount != 1 {
 		t.Fatalf("expected 1 question revision, got %d", revisionCount)
+	}
+}
+
+func TestResultPageRendersMarkdownExplanationAsHTML(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	if _, err := database.DB.Exec(`
+		UPDATE questions
+		SET explanation_markdown = '**Bold note** with ` + "`code`" + `.'
+	`); err != nil {
+		t.Fatalf("update explanation_markdown failed: %v", err)
+	}
+
+	examID := startExam(t, router, 1)
+	totalQuestions := examQuestionCountForTest(t, examID)
+	if totalQuestions == 0 {
+		t.Fatal("expected seeded exam to have questions")
+	}
+
+	firstQuestionID, correctOptionIDs := examQuestionAndCorrectOptions(t, examID, 1)
+	postAnswer(t, router, examID, firstQuestionID, 1, wrongOptionIDs(t, firstQuestionID, correctOptionIDs), totalQuestions == 1)
+
+	for position := 2; position <= totalQuestions; position++ {
+		questionID, correctIDs := examQuestionAndCorrectOptions(t, examID, position)
+		postAnswer(t, router, examID, questionID, position, correctIDs, position == totalQuestions)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/exam/%d/result", examID), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on result page, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `<strong>Bold note</strong>`) {
+		t.Fatalf("expected rendered bold markdown in result page, got body: %s", body)
+	}
+	if !strings.Contains(body, `<code>code</code>`) {
+		t.Fatalf("expected rendered code markdown in result page, got body: %s", body)
+	}
+	if strings.Contains(body, `<p><p>`) {
+		t.Fatalf("expected explanation HTML not to be wrapped in nested paragraphs, got body: %s", body)
 	}
 }
 
