@@ -6,7 +6,12 @@
             <h1>{{.Subject.Title}}</h1>
             <p class="subtitle">{{.Subject.Slug}} · current question set #{{.Subject.CurrentQuestionSet}}</p>
         </div>
-        <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+            <form action="/admin/logout" method="POST" style="display: inline;">
+                <button type="submit" class="btn-api secondary">Logout</button>
+            </form>
+        </div>
     </div>
 
     <div class="admin-table-wrap">
@@ -14,23 +19,33 @@
             <thead>
                 <tr>
                     <th>Key</th>
+                    <th>Status</th>
                     <th>Type</th>
                     <th>Stem</th>
                     <th>Options</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 {{range .Questions}}
                 <tr>
                     <td><code>{{.Key}}</code></td>
+                    <td><span class="pill">{{.Status}}</span></td>
                     <td>{{.Type}}</td>
                     <td>{{.Stem}}</td>
                     <td>{{.OptionCount}}</td>
-                    <td><a href="/admin/questions/{{.ID}}/edit">Edit</a></td>
+                    <td>
+                        <a href="/admin/questions/{{.ID}}/edit">Edit</a>
+                        {{if ne .Status "disabled"}}
+                        <form action="/admin/questions/{{.ID}}/disable" method="POST" style="display: inline;">
+                            <button type="submit" class="btn-api secondary">Disable</button>
+                        </form>
+                        {{end}}
+                    </td>
                 </tr>
                 {{else}}
                 <tr>
-                    <td colspan="5">No questions found for the current question set.</td>
+                    <td colspan="6">No questions found for the current question set.</td>
                 </tr>
                 {{end}}
             </tbody>

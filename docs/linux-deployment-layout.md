@@ -99,6 +99,8 @@ Create `/etc/simsexam/simsexam.env` with:
 SIMSEXAM_ADDR=127.0.0.1:6080
 SIMSEXAM_DB_PATH=/var/lib/simsexam/simsexam_v1.db
 SIMSEXAM_IMPORT_SOURCE_TYPE=manual
+SIMSEXAM_ADMIN_PASSWORD=change-this-before-production
+SIMSEXAM_ADMIN_SESSION_SECRET=change-this-to-a-long-random-secret
 ```
 
 You can start from the bundled `simsexam.env.example`.
@@ -111,6 +113,12 @@ Field notes:
   - points to the canonical database file
 - `SIMSEXAM_IMPORT_SOURCE_TYPE`
   - retained as a configurable runtime value
+- `SIMSEXAM_ADMIN_PASSWORD`
+  - required to access `/admin/*`
+  - use a random 24-32 character value without spaces
+- `SIMSEXAM_ADMIN_SESSION_SECRET`
+  - used to sign the admin session cookie; must be long and random in production
+  - use a base64 or hex secret without spaces
 
 ## 4. systemd Unit Location
 
@@ -165,6 +173,8 @@ Edit `/etc/simsexam/simsexam.env` if needed. The default content is:
 SIMSEXAM_ADDR=127.0.0.1:6080
 SIMSEXAM_DB_PATH=/var/lib/simsexam/simsexam_v1.db
 SIMSEXAM_IMPORT_SOURCE_TYPE=manual
+SIMSEXAM_ADMIN_PASSWORD=change-this-before-production
+SIMSEXAM_ADMIN_SESSION_SECRET=change-this-to-a-long-random-secret
 ```
 
 ### 5.4 Install the systemd Unit

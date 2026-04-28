@@ -35,7 +35,7 @@ func NewServerApp(ctx context.Context, cfg config.ServerConfig) (*ServerApp, err
 	return &ServerApp{
 		Config: cfg,
 		DB:     &databaseHandle{},
-		Router: NewRouter(),
+		Router: NewRouter(cfg),
 	}, nil
 }
 
@@ -48,7 +48,7 @@ func (a *ServerApp) Close() error {
 	return err
 }
 
-func NewRouter() http.Handler {
+func NewRouter(cfg config.ServerConfig) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -57,12 +57,21 @@ func NewRouter() http.Handler {
 	r.Handle("/static/*", http.StripPrefix("/static", fileServer))
 
 	r.Get("/", handlers.Home)
-	r.Get("/admin/subjects", handlers.AdminSubjects)
-	r.Get("/admin/import", handlers.AdminImportForm)
-	r.Post("/admin/import", handlers.AdminImportSubmit)
-	r.Get("/admin/subjects/{id}/questions", handlers.AdminSubjectQuestions)
-	r.Get("/admin/questions/{id}/edit", handlers.AdminEditQuestionForm)
-	r.Post("/admin/questions/{id}/edit", handlers.AdminEditQuestionSubmit)
+	r.Get("/admin/login", handlers.AdminLoginForm(cfg))
+	r.Post("/admin/login", handlers.AdminLoginSubmit(cfg))
+	r.Post("/admin/logout", handlers.AdminLogout)
+
+	r.Route("/admin", func(r chi.Router) {
+		r.Use(handlers.AdminAuthMiddleware(cfg))
+		r.Get("/subjects", handlers.AdminSubjects)
+		r.Get("/import", handlers.AdminImportForm)
+		r.Post("/import", handlers.AdminImportSubmit)
+		r.Get("/subjects/{id}/questions", handlers.AdminSubjectQuestions)
+		r.Post("/subjects/{id}/archive", handlers.AdminArchiveSubject)
+		r.Post("/questions/{id}/disable", handlers.AdminDisableQuestion)
+		r.Get("/questions/{id}/edit", handlers.AdminEditQuestionForm)
+		r.Post("/questions/{id}/edit", handlers.AdminEditQuestionSubmit)
+	})
 
 	r.Route("/exam", func(r chi.Router) {
 		r.Post("/start", handlers.StartExam)

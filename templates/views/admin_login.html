@@ -1,0 +1,29 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Admin Login</h1>
+            <p class="subtitle">Enter the admin password to access question management tools.</p>
+        </div>
+    </div>
+
+    <div class="question-card">
+        {{if .Error}}
+        <div class="review-item" style="border-left-color: var(--gold); margin-bottom: 20px;">
+            <strong>{{.Error}}</strong>
+        </div>
+        {{end}}
+        <form action="/admin/login" method="POST">
+            <div style="display: grid; gap: 12px;">
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" autocomplete="current-password"
+                    style="padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface); color: var(--text-primary);">
+                <div>
+                    <button type="submit" class="btn-api primary">Sign In</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</section>
+{{end}}

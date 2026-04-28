@@ -6,7 +6,12 @@
             <h1>Edit Question</h1>
             <p class="subtitle">{{.SubjectTitle}} · <code>{{.Key}}</code></p>
         </div>
-        <a href="/admin/subjects/{{.SubjectID}}/questions" class="btn-api secondary">Back to Questions</a>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/subjects/{{.SubjectID}}/questions" class="btn-api secondary">Back to Questions</a>
+            <form action="/admin/logout" method="POST" style="display: inline;">
+                <button type="submit" class="btn-api secondary">Logout</button>
+            </form>
+        </div>
     </div>
 
     {{if .Errors}}

@@ -6,7 +6,12 @@
             <h1>Import Markdown</h1>
             <p class="subtitle">Upload a subject Markdown file or paste Markdown directly.</p>
         </div>
-        <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+            <form action="/admin/logout" method="POST" style="display: inline;">
+                <button type="submit" class="btn-api secondary">Logout</button>
+            </form>
+        </div>
     </div>
 
     {{if .Errors}}

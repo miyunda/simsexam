@@ -35,6 +35,7 @@ type adminQuestionRow struct {
 	ID          int
 	Key         string
 	Type        string
+	Status      string
 	Stem        string
 	Explanation string
 	OptionCount int
@@ -214,6 +215,7 @@ func AdminSubjectQuestions(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := database.DB.Query(`
 		SELECT q.id, q.external_key, q.type, q.stem_markdown, COALESCE(q.explanation_markdown, ''),
+		       q.status,
 		       (SELECT COUNT(*) FROM question_options qo WHERE qo.question_id = q.id) AS option_count
 		FROM questions q
 		WHERE q.subject_id = ? AND q.question_set_id = ?
@@ -228,7 +230,7 @@ func AdminSubjectQuestions(w http.ResponseWriter, r *http.Request) {
 	var questions []adminQuestionRow
 	for rows.Next() {
 		var row adminQuestionRow
-		if err := rows.Scan(&row.ID, &row.Key, &row.Type, &row.Stem, &row.Explanation, &row.OptionCount); err != nil {
+		if err := rows.Scan(&row.ID, &row.Key, &row.Type, &row.Stem, &row.Explanation, &row.Status, &row.OptionCount); err != nil {
 			http.Error(w, "Failed to load questions", http.StatusInternalServerError)
 			return
 		}
@@ -243,6 +245,100 @@ func AdminSubjectQuestions(w http.ResponseWriter, r *http.Request) {
 		Subject:   subject,
 		Questions: questions,
 	})
+}
+
+func AdminArchiveSubject(w http.ResponseWriter, r *http.Request) {
+	subjectID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	if subjectID == 0 {
+		http.Error(w, "Invalid subject", http.StatusBadRequest)
+		return
+	}
+
+	result, err := database.DB.Exec(`
+		UPDATE subjects
+		SET status = 'archived', updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status != 'archived'
+	`, subjectID)
+	if err != nil {
+		http.Error(w, "Failed to archive subject", http.StatusInternalServerError)
+		return
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		http.Error(w, "Failed to archive subject", http.StatusInternalServerError)
+		return
+	}
+	if affected == 0 {
+		http.Error(w, "Subject not found", http.StatusNotFound)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/subjects", http.StatusSeeOther)
+}
+
+func AdminDisableQuestion(w http.ResponseWriter, r *http.Request) {
+	questionID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	if questionID == 0 {
+		http.Error(w, "Invalid question", http.StatusBadRequest)
+		return
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	var subjectID int
+	var status string
+	err = tx.QueryRow(`
+		SELECT subject_id, status
+		FROM questions
+		WHERE id = ?
+	`, questionID).Scan(&subjectID, &status)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Question not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		return
+	}
+	if status == "disabled" {
+		http.Redirect(w, r, fmt.Sprintf("/admin/subjects/%d/questions", subjectID), http.StatusSeeOther)
+		return
+	}
+
+	snapshot, err := questionSnapshot(tx, questionID)
+	if err != nil {
+		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE questions
+		SET status = 'disabled', updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, questionID); err != nil {
+		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := tx.Exec(`
+		INSERT INTO question_revisions (question_id, change_summary, snapshot_json)
+		VALUES (?, ?, ?)
+	`, questionID, "Question disabled from admin list", snapshot); err != nil {
+		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/subjects/%d/questions", subjectID), http.StatusSeeOther)
 }
 
 func AdminEditQuestionForm(w http.ResponseWriter, r *http.Request) {

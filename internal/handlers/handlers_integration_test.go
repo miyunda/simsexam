@@ -17,6 +17,7 @@ import (
 
 	"simsexam/internal/app"
 	"simsexam/internal/bootstrap"
+	"simsexam/internal/config"
 	"simsexam/internal/database"
 	"simsexam/internal/handlers"
 )
@@ -178,8 +179,10 @@ func TestExamStartPersistsOptionDisplayOrder(t *testing.T) {
 func TestAdminSubjectsAndQuestionsPages(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/subjects", nil)
+	req.AddCookie(adminCookie)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -191,6 +194,7 @@ func TestAdminSubjectsAndQuestionsPages(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/subjects/1/questions", nil)
+	req.AddCookie(adminCookie)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -201,11 +205,15 @@ func TestAdminSubjectsAndQuestionsPages(t *testing.T) {
 	if !strings.Contains(body, "demo-001") || !strings.Contains(body, "demo-002") {
 		t.Fatalf("expected admin questions page to contain seeded keys, got body: %s", body)
 	}
+	if !strings.Contains(body, "active") {
+		t.Fatalf("expected admin questions page to show question status, got body: %s", body)
+	}
 }
 
 func TestAdminImportMarkdownText(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
 
 	form := url.Values{}
 	form.Set("markdown_text", `# Subject: admin-demo
@@ -240,6 +248,7 @@ What is 2 + 2?
 	body := bytes.NewBufferString(form.Encode())
 	req := httptest.NewRequest(http.MethodPost, "/admin/import", body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(adminCookie)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -262,6 +271,7 @@ What is 2 + 2?
 func TestAdminImportMarkdownFile(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -305,6 +315,7 @@ A comes before B, C, and D.
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/import", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(adminCookie)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -319,8 +330,10 @@ A comes before B, C, and D.
 func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/questions/1/edit", nil)
+	req.AddCookie(adminCookie)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -348,6 +361,7 @@ func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodPost, "/admin/questions/1/edit", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(adminCookie)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -377,6 +391,83 @@ func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 	}
 	if revisionCount != 1 {
 		t.Fatalf("expected 1 question revision, got %d", revisionCount)
+	}
+}
+
+func TestAdminArchiveSubjectRemovesItFromHome(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/subjects/1/archive", nil)
+	req.AddCookie(adminCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from archive submit, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var status string
+	if err := database.DB.QueryRow(`SELECT status FROM subjects WHERE id = 1`).Scan(&status); err != nil {
+		t.Fatalf("query archived subject failed: %v", err)
+	}
+	if status != "archived" {
+		t.Fatalf("expected subject status archived, got %q", status)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on home page, got %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "SE Demo Subject") {
+		t.Fatalf("expected archived subject to disappear from home page, got body: %s", rec.Body.String())
+	}
+}
+
+func TestAdminDisableQuestionUpdatesStatusAndCreatesRevision(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/questions/1/disable", nil)
+	req.AddCookie(adminCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from disable submit, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var status string
+	if err := database.DB.QueryRow(`SELECT status FROM questions WHERE id = 1`).Scan(&status); err != nil {
+		t.Fatalf("query disabled question failed: %v", err)
+	}
+	if status != "disabled" {
+		t.Fatalf("expected question status disabled, got %q", status)
+	}
+
+	var revisionCount int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM question_revisions WHERE question_id = 1`).Scan(&revisionCount); err != nil {
+		t.Fatalf("count question revisions after disable failed: %v", err)
+	}
+	if revisionCount != 1 {
+		t.Fatalf("expected 1 question revision after disable, got %d", revisionCount)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/subjects/1/questions", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on admin questions page, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "disabled") {
+		t.Fatalf("expected disabled status on admin questions page, got body: %s", rec.Body.String())
 	}
 }
 
@@ -424,10 +515,43 @@ func TestResultPageRendersMarkdownExplanationAsHTML(t *testing.T) {
 	}
 }
 
+func TestAdminRoutesRedirectWithoutSession(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/subjects", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 redirect for unauthenticated admin request, got %d", rec.Code)
+	}
+	if rec.Header().Get("Location") != "/admin/login" {
+		t.Fatalf("expected redirect to /admin/login, got %q", rec.Header().Get("Location"))
+	}
+}
+
+func TestAdminRoutesFailClosedWithoutConfiguration(t *testing.T) {
+	setupHandlerTestEnv(t)
+	t.Setenv(config.EnvAdminPassword, "")
+	t.Setenv(config.EnvAdminSessionKey, "")
+	router := newTestRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/subjects", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when admin access is not configured, got %d", rec.Code)
+	}
+}
+
 func setupHandlerTestEnv(t *testing.T) {
 	t.Helper()
 
 	changeToRepoRoot(t)
+	t.Setenv(config.EnvAdminPassword, "admin-pass")
+	t.Setenv(config.EnvAdminSessionKey, "admin-session-secret")
 
 	dbPath := filepath.Join(t.TempDir(), "handlers.db")
 	if err := database.InitDB(dbPath); err != nil {
@@ -465,7 +589,30 @@ func changeToRepoRoot(t *testing.T) {
 }
 
 func newTestRouter() http.Handler {
-	return app.NewRouter()
+	return app.NewRouter(config.LoadServerConfig())
+}
+
+func adminSessionCookie(t *testing.T, router http.Handler) *http.Cookie {
+	t.Helper()
+
+	form := url.Values{}
+	form.Set("password", "admin-pass")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from admin login, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == "simsexam_admin_session" {
+			return cookie
+		}
+	}
+	t.Fatal("expected admin session cookie after login")
+	return nil
 }
 
 func startExam(t *testing.T, router http.Handler, subjectID int) int {

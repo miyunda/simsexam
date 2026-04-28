@@ -6,7 +6,12 @@
             <h1>Subjects</h1>
             <p class="subtitle">Manage current subjects, question sets, and imports.</p>
         </div>
-        <a href="/admin/import" class="btn-api primary">Import Markdown</a>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/import" class="btn-api primary">Import Markdown</a>
+            <form action="/admin/logout" method="POST" style="display: inline;">
+                <button type="submit" class="btn-api secondary">Logout</button>
+            </form>
+        </div>
     </div>
 
     <div class="admin-table-wrap">
@@ -32,7 +37,14 @@
                     <td>{{.AccessLevel}}</td>
                     <td>{{.QuestionCount}} questions · {{.DurationMinutes}} min</td>
                     <td>{{.CurrentQuestions}} questions</td>
-                    <td><a href="/admin/subjects/{{.ID}}/questions">View Questions</a></td>
+                    <td>
+                        <a href="/admin/subjects/{{.ID}}/questions">View Questions</a>
+                        {{if ne .Status "archived"}}
+                        <form action="/admin/subjects/{{.ID}}/archive" method="POST" style="display: inline;">
+                            <button type="submit" class="btn-api secondary">Archive</button>
+                        </form>
+                        {{end}}
+                    </td>
                 </tr>
                 {{else}}
                 <tr>

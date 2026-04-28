@@ -17,7 +17,9 @@ func TestNewServerAppBootstrapsAndServesHome(t *testing.T) {
 		RuntimeConfig: config.RuntimeConfig{
 			DBPath: filepath.Join(t.TempDir(), "app.db"),
 		},
-		Addr: config.DefaultAddr,
+		Addr:               config.DefaultAddr,
+		AdminPassword:      "admin-pass",
+		AdminSessionSecret: "admin-session-secret",
 	}
 
 	serverApp, err := NewServerApp(t.Context(), cfg)
