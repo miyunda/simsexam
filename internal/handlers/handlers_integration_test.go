@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"simsexam/internal/app"
 	"simsexam/internal/bootstrap"
+	"simsexam/internal/buildinfo"
 	"simsexam/internal/config"
 	"simsexam/internal/database"
 	"simsexam/internal/handlers"
@@ -24,6 +26,14 @@ import (
 
 func TestHomeRendersPublishedSubject(t *testing.T) {
 	setupHandlerTestEnv(t)
+	oldVersion, oldCommit, oldBuildTime := buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime
+	t.Cleanup(func() {
+		buildinfo.Version = oldVersion
+		buildinfo.Commit = oldCommit
+		buildinfo.BuildTime = oldBuildTime
+	})
+	buildinfo.Version = "v9.9.9"
+	buildinfo.Commit = "abcdef123456"
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -36,6 +46,9 @@ func TestHomeRendersPublishedSubject(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "SE Demo Subject") {
 		t.Fatalf("expected home page to contain seeded subject title, got body: %s", body)
+	}
+	if !strings.Contains(body, "Version v9.9.9 · abcdef1") {
+		t.Fatalf("expected home page footer to contain version summary, got body: %s", body)
 	}
 }
 
@@ -192,6 +205,9 @@ func TestAdminSubjectsAndQuestionsPages(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "SE Demo Subject") {
 		t.Fatalf("expected admin subjects page to contain seeded subject, got body: %s", rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), "shuffle off") {
+		t.Fatalf("expected admin subjects page to show subject shuffle status, got body: %s", rec.Body.String())
+	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/subjects/1/questions", nil)
 	req.AddCookie(adminCookie)
@@ -207,6 +223,48 @@ func TestAdminSubjectsAndQuestionsPages(t *testing.T) {
 	}
 	if !strings.Contains(body, "active") {
 		t.Fatalf("expected admin questions page to show question status, got body: %s", body)
+	}
+	if !strings.Contains(body, "inherit") {
+		t.Fatalf("expected admin questions page to show question shuffle mode, got body: %s", body)
+	}
+}
+
+func TestAdminEditSubjectUpdatesShuffleDefault(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/subjects/1/edit", nil)
+	req.AddCookie(adminCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on subject settings form, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Subject Settings") {
+		t.Fatalf("expected subject settings page, got body: %s", rec.Body.String())
+	}
+
+	form := url.Values{}
+	form.Set("shuffle_options_default", "on")
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/subjects/1/edit", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from subject settings submit, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var shuffleDefault int
+	if err := database.DB.QueryRow(`SELECT shuffle_options_default FROM subjects WHERE id = 1`).Scan(&shuffleDefault); err != nil {
+		t.Fatalf("query updated subject shuffle default failed: %v", err)
+	}
+	if shuffleDefault != 1 {
+		t.Fatalf("expected subject shuffle default 1, got %d", shuffleDefault)
 	}
 }
 
@@ -348,6 +406,7 @@ func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 	form.Set("type", "single")
 	form.Set("stem", "What color is the daytime sky under clear weather?")
 	form.Set("explanation", "The sky usually appears blue because of Rayleigh scattering.")
+	form.Set("allow_option_shuffle", "disable")
 	form.Set("change_summary", "Clarified wording and explanation")
 	form.Add("option_id", "1")
 	form.Add("option_id", "2")
@@ -371,11 +430,12 @@ func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 
 	var stem string
 	var explanation string
+	var allowOptionShuffle sql.NullInt64
 	if err := database.DB.QueryRow(`
-		SELECT stem_markdown, COALESCE(explanation_markdown, '')
+		SELECT stem_markdown, COALESCE(explanation_markdown, ''), allow_option_shuffle
 		FROM questions
 		WHERE id = 1
-	`).Scan(&stem, &explanation); err != nil {
+	`).Scan(&stem, &explanation, &allowOptionShuffle); err != nil {
 		t.Fatalf("query updated question failed: %v", err)
 	}
 	if stem != "What color is the daytime sky under clear weather?" {
@@ -384,6 +444,9 @@ func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 	if !strings.Contains(explanation, "Rayleigh scattering") {
 		t.Fatalf("unexpected updated explanation: %q", explanation)
 	}
+	if !allowOptionShuffle.Valid || allowOptionShuffle.Int64 != 0 {
+		t.Fatalf("expected allow_option_shuffle to be 0 after edit, got %+v", allowOptionShuffle)
+	}
 
 	var revisionCount int
 	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM question_revisions WHERE question_id = 1`).Scan(&revisionCount); err != nil {
@@ -391,6 +454,22 @@ func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 	}
 	if revisionCount != 1 {
 		t.Fatalf("expected 1 question revision, got %d", revisionCount)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/questions/1/history", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on question history page, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Clarified wording and explanation") {
+		t.Fatalf("expected history page to contain change summary, got body: %s", body)
+	}
+	if !strings.Contains(body, "What color is the sky on a clear day?") {
+		t.Fatalf("expected history page to contain previous stem snapshot, got body: %s", body)
 	}
 }
 
@@ -469,6 +548,18 @@ func TestAdminDisableQuestionUpdatesStatusAndCreatesRevision(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "disabled") {
 		t.Fatalf("expected disabled status on admin questions page, got body: %s", rec.Body.String())
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/questions/1/history", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on question history page after disable, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Question disabled from admin list") {
+		t.Fatalf("expected disable summary in history page, got body: %s", rec.Body.String())
+	}
 }
 
 func TestResultPageRendersMarkdownExplanationAsHTML(t *testing.T) {
@@ -512,6 +603,139 @@ func TestResultPageRendersMarkdownExplanationAsHTML(t *testing.T) {
 	}
 	if strings.Contains(body, `<p><p>`) {
 		t.Fatalf("expected explanation HTML not to be wrapped in nested paragraphs, got body: %s", body)
+	}
+}
+
+func TestQuestionFeedbackSubmissionAndAdminReview(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
+
+	examID := startExam(t, router, 1)
+	totalQuestions := examQuestionCountForTest(t, examID)
+	if totalQuestions == 0 {
+		t.Fatal("expected seeded exam to have questions")
+	}
+
+	firstQuestionID, correctOptionIDs := examQuestionAndCorrectOptions(t, examID, 1)
+	postAnswer(t, router, examID, firstQuestionID, 1, wrongOptionIDs(t, firstQuestionID, correctOptionIDs), totalQuestions == 1)
+
+	for position := 2; position <= totalQuestions; position++ {
+		questionID, correctIDs := examQuestionAndCorrectOptions(t, examID, position)
+		postAnswer(t, router, examID, questionID, position, correctIDs, position == totalQuestions)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/exam/%d/result", examID), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on result page, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Report a Question Issue") {
+		t.Fatalf("expected result page to contain question feedback form, got body: %s", rec.Body.String())
+	}
+
+	form := url.Values{}
+	form.Set("question_id", strconv.Itoa(firstQuestionID))
+	form.Set("feedback_type", "incorrect_answer")
+	form.Set("comment", "The answer key looks wrong for this question.")
+
+	req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/exam/%d/feedback", examID), strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from feedback submit, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	expectedLocation := fmt.Sprintf("/exam/%d/result?feedback=submitted", examID)
+	if rec.Header().Get("Location") != expectedLocation {
+		t.Fatalf("expected feedback redirect %q, got %q", expectedLocation, rec.Header().Get("Location"))
+	}
+
+	req = httptest.NewRequest(http.MethodGet, expectedLocation, nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on result page after feedback, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Feedback submitted") {
+		t.Fatalf("expected feedback success banner, got body: %s", rec.Body.String())
+	}
+
+	var feedbackID int
+	var status string
+	var comment string
+	if err := database.DB.QueryRow(`
+		SELECT id, status, COALESCE(comment, '')
+		FROM question_feedback
+		WHERE exam_id = ? AND question_id = ?
+	`, examID, firstQuestionID).Scan(&feedbackID, &status, &comment); err != nil {
+		t.Fatalf("query feedback row failed: %v", err)
+	}
+	if status != "open" {
+		t.Fatalf("expected feedback status open, got %q", status)
+	}
+	if !strings.Contains(comment, "answer key") {
+		t.Fatalf("unexpected feedback comment: %q", comment)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/feedback", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on admin feedback list, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "incorrect_answer") || !strings.Contains(body, "View") {
+		t.Fatalf("expected feedback list entry, got body: %s", body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/feedback/%d", feedbackID), nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on admin feedback detail, got %d", rec.Code)
+	}
+	body = rec.Body.String()
+	if !strings.Contains(body, "The answer key looks wrong for this question.") {
+		t.Fatalf("expected admin feedback detail to contain learner comment, got body: %s", body)
+	}
+	if !strings.Contains(body, "Question Snapshot") || !strings.Contains(body, "Answer Snapshot") {
+		t.Fatalf("expected admin feedback detail to contain snapshots, got body: %s", body)
+	}
+
+	resolveForm := url.Values{}
+	resolveForm.Set("resolution_note", "Reviewed and corrected the answer key.")
+	req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/feedback/%d/resolve", feedbackID), strings.NewReader(resolveForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from feedback resolve, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var resolutionNote string
+	if err := database.DB.QueryRow(`
+		SELECT status, COALESCE(resolution_note, '')
+		FROM question_feedback
+		WHERE id = ?
+	`, feedbackID).Scan(&status, &resolutionNote); err != nil {
+		t.Fatalf("query resolved feedback failed: %v", err)
+	}
+	if status != "resolved" {
+		t.Fatalf("expected feedback status resolved, got %q", status)
+	}
+	if !strings.Contains(resolutionNote, "corrected") {
+		t.Fatalf("unexpected resolution note: %q", resolutionNote)
 	}
 }
 

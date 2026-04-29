@@ -1,0 +1,90 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Question Feedback</h1>
+            <p class="subtitle">Review learner reports about question quality, answer keys, and wording.</p>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+            <form action="/admin/logout" method="POST" style="display: inline;">
+                <button type="submit" class="btn-api secondary">Logout</button>
+            </form>
+        </div>
+    </div>
+
+    <form action="/admin/feedback" method="GET" class="admin-form-card" style="margin-bottom: 24px;">
+        <div class="form-section">
+            <label for="status">Status</label>
+            <select id="status" name="status" class="form-select">
+                <option value="open" {{if eq .StatusFilter "open"}}selected{{end}}>open</option>
+                <option value="resolved" {{if eq .StatusFilter "resolved"}}selected{{end}}>resolved</option>
+                <option value="dismissed" {{if eq .StatusFilter "dismissed"}}selected{{end}}>dismissed</option>
+            </select>
+        </div>
+
+        <div class="form-section">
+            <label for="subject">Subject</label>
+            <select id="subject" name="subject" class="form-select">
+                <option value="">all subjects</option>
+                {{range .Subjects}}
+                <option value="{{.ID}}" {{if eq $.SubjectFilter (printf "%d" .ID)}}selected{{end}}>{{.Title}}</option>
+                {{end}}
+            </select>
+        </div>
+
+        <div class="form-section">
+            <label for="feedback_type">Feedback Type</label>
+            <select id="feedback_type" name="feedback_type" class="form-select">
+                <option value="">all types</option>
+                <option value="incorrect_answer" {{if eq .TypeFilter "incorrect_answer"}}selected{{end}}>incorrect answer</option>
+                <option value="ambiguous_wording" {{if eq .TypeFilter "ambiguous_wording"}}selected{{end}}>ambiguous wording</option>
+                <option value="outdated_content" {{if eq .TypeFilter "outdated_content"}}selected{{end}}>outdated content</option>
+                <option value="typo_or_formatting" {{if eq .TypeFilter "typo_or_formatting"}}selected{{end}}>typo or formatting</option>
+                <option value="other" {{if eq .TypeFilter "other"}}selected{{end}}>other</option>
+            </select>
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn-api primary">Apply Filters</button>
+        </div>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Type</th>
+                    <th>Subject</th>
+                    <th>Question</th>
+                    <th>Reports For Question</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Feedback}}
+                <tr>
+                    <td><span class="pill">{{.Status}}</span></td>
+                    <td>{{.FeedbackType}}</td>
+                    <td>{{.SubjectTitle}}</td>
+                    <td>
+                        {{if .QuestionKey}}<code>{{.QuestionKey}}</code>{{end}}
+                        <div class="table-subtext">{{.QuestionStem}}</div>
+                    </td>
+                    <td>{{.QuestionReportCount}}</td>
+                    <td>{{.CreatedAt}}</td>
+                    <td><a href="/admin/feedback/{{.ID}}">View</a></td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="7">No feedback matches the current filters.</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</section>
+{{end}}

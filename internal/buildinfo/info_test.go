@@ -20,3 +20,39 @@ func TestSummary(t *testing.T) {
 		t.Fatalf("Summary() = %q, want %q", got, want)
 	}
 }
+
+func TestFooterSummaryWithCommit(t *testing.T) {
+	oldVersion, oldCommit, oldBuildTime := Version, Commit, BuildTime
+	t.Cleanup(func() {
+		Version = oldVersion
+		Commit = oldCommit
+		BuildTime = oldBuildTime
+	})
+
+	Version = "v0.1.5"
+	Commit = "abcdef123456"
+
+	got := FooterSummary()
+	want := "Version v0.1.5 · abcdef1"
+	if got != want {
+		t.Fatalf("FooterSummary() = %q, want %q", got, want)
+	}
+}
+
+func TestFooterSummaryWithoutCommit(t *testing.T) {
+	oldVersion, oldCommit, oldBuildTime := Version, Commit, BuildTime
+	t.Cleanup(func() {
+		Version = oldVersion
+		Commit = oldCommit
+		BuildTime = oldBuildTime
+	})
+
+	Version = "dev"
+	Commit = "unknown"
+
+	got := FooterSummary()
+	want := "Version dev"
+	if got != want {
+		t.Fatalf("FooterSummary() = %q, want %q", got, want)
+	}
+}

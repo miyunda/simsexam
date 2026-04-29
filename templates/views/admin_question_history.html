@@ -1,0 +1,50 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Question History</h1>
+            <p class="subtitle">{{.Question.SubjectTitle}} · <code>{{.Question.Key}}</code></p>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/feedback" class="btn-api secondary">Feedback</a>
+            <a href="/admin/questions/{{.Question.QuestionID}}/edit" class="btn-api secondary">Back to Edit</a>
+            <form action="/admin/logout" method="POST" style="display: inline;">
+                <button type="submit" class="btn-api secondary">Logout</button>
+            </form>
+        </div>
+    </div>
+
+    {{if .Revisions}}
+    <div class="review-list">
+        {{range .Revisions}}
+        <div class="review-item">
+            <h3 class="review-question">Revision #{{.ID}}</h3>
+            <div class="review-details">
+                <p><span class="label">Saved At:</span> {{.CreatedAt}}</p>
+                <p><span class="label">Summary:</span> {{if .ChangeSummary}}{{.ChangeSummary}}{{else}}(no summary){{end}}</p>
+                <p><span class="label">Type:</span> {{.Question.Type}}</p>
+                <p><span class="label">Stem:</span> {{.Question.Stem}}</p>
+                <p><span class="label">Explanation:</span> {{if .Question.Explanation}}{{.Question.Explanation}}{{else}}(empty){{end}}</p>
+                <div class="options-editor">
+                    <h4>Options</h4>
+                    {{range .Question.Options}}
+                    <div class="option-editor-row">
+                        <span class="table-subtext">#{{.SortOrder}}</span>
+                        <span>{{.Text}}</span>
+                        {{if .IsCorrect}}<span class="pill">correct</span>{{end}}
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{else}}
+    <div class="subject-card">
+        <h2>No Revisions Yet</h2>
+        <p class="table-subtext">This question has not been edited or disabled since it was imported.</p>
+    </div>
+    {{end}}
+</section>
+{{end}}

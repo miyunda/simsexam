@@ -1,0 +1,115 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Feedback #{{.ID}}</h1>
+            <p class="subtitle">{{.SubjectTitle}} · {{if .QuestionKey}}<code>{{.QuestionKey}}</code>{{end}}</p>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/feedback" class="btn-api secondary">Back to Feedback</a>
+            <a href="/admin/questions/{{.QuestionID}}/edit" class="btn-api secondary">Edit Question</a>
+            <form action="/admin/logout" method="POST" style="display: inline;">
+                <button type="submit" class="btn-api secondary">Logout</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="subject-card">
+            <h2>Status</h2>
+            <p><span class="pill">{{.Status}}</span></p>
+            <p class="table-subtext">{{.CreatedAt}}</p>
+        </div>
+        <div class="subject-card">
+            <h2>Type</h2>
+            <p>{{.FeedbackType}}</p>
+            <p class="table-subtext">Question set #{{.QuestionSetID}}</p>
+        </div>
+        <div class="subject-card">
+            <h2>Exam Context</h2>
+            {{if .ExamID.Valid}}
+            <p>Exam #{{.ExamID.Int64}}</p>
+            {{else}}
+            <p>No exam context</p>
+            {{end}}
+            <p class="table-subtext">Question #{{.QuestionID}}</p>
+        </div>
+    </div>
+
+    <div class="review-list">
+        <div class="review-item">
+            <h3 class="review-question">Learner Report</h3>
+            <div class="review-details">
+                <p><span class="label">Comment:</span> {{if .Comment}}{{.Comment}}{{else}}(no comment){{end}}</p>
+                <p><span class="label">Resolution Note:</span> {{if .ResolutionNote}}{{.ResolutionNote}}{{else}}(not set){{end}}</p>
+                {{if .ResolvedAt.Valid}}
+                <p><span class="label">Resolved At:</span> {{.ResolvedAt.String}}</p>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="review-item">
+            <h3 class="review-question">Question Snapshot</h3>
+            <div class="review-details">
+                <p><span class="label">Stem:</span> {{.QuestionSnapshot.Stem}}</p>
+                <p><span class="label">Explanation:</span> {{if .QuestionSnapshot.Explanation}}{{.QuestionSnapshot.Explanation}}{{else}}(empty){{end}}</p>
+                <div class="options-editor">
+                    <h4>Displayed Options</h4>
+                    {{range .QuestionSnapshot.Options}}
+                    <div class="option-editor-row">
+                        <span class="table-subtext">#{{.DisplayOrder}}</span>
+                        <span>{{.Text}}</span>
+                        {{if .IsCorrect}}<span class="pill">correct</span>{{end}}
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        <div class="review-item">
+            <h3 class="review-question">Answer Snapshot</h3>
+            <div class="review-details">
+                <p><span class="label">Judged Correct:</span> {{if .AnswerSnapshot.IsCorrect}}yes{{else}}no{{end}}</p>
+                <div class="options-editor">
+                    <h4>Selected Options</h4>
+                    {{if .AnswerSnapshot.SelectedOptions}}
+                    {{range .AnswerSnapshot.SelectedOptions}}
+                    <div class="option-editor-row">
+                        <span class="table-subtext">#{{.DisplayOrder}}</span>
+                        <span>{{.Text}}</span>
+                    </div>
+                    {{end}}
+                    {{else}}
+                    <p class="table-subtext">No selected options were captured.</p>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <form action="/admin/feedback/{{.ID}}/resolve" method="POST" class="admin-form-card">
+            <div class="form-section">
+                <label for="resolve_note">Resolution Note</label>
+                <textarea id="resolve_note" name="resolution_note" rows="4"
+                    placeholder="Describe what was corrected or confirmed.">{{.ResolutionNote}}</textarea>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn-api primary">Resolve</button>
+            </div>
+        </form>
+
+        <form action="/admin/feedback/{{.ID}}/dismiss" method="POST" class="admin-form-card">
+            <div class="form-section">
+                <label for="dismiss_note">Dismissal Note</label>
+                <textarea id="dismiss_note" name="resolution_note" rows="4"
+                    placeholder="Explain why no change was needed.">{{.ResolutionNote}}</textarea>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn-api secondary">Dismiss</button>
+            </div>
+        </form>
+    </div>
+</section>
+{{end}}

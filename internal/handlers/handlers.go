@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+
+	"simsexam/internal/buildinfo"
 )
 
 func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
@@ -14,7 +16,9 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 		filepath.Join(cwd, "templates/views", tmpl),
 	}
 
-	ts, err := template.ParseFiles(files...)
+	ts, err := template.New("base").Funcs(template.FuncMap{
+		"footerVersion": buildinfo.FooterSummary,
+	}).ParseFiles(files...)
 	if err != nil {
 		log.Println(err.Error())
 		http.Error(w, "Internal Server Error", 500)

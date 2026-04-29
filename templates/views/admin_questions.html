@@ -7,6 +7,7 @@
             <p class="subtitle">{{.Subject.Slug}} · current question set #{{.Subject.CurrentQuestionSet}}</p>
         </div>
         <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/feedback" class="btn-api secondary">Feedback</a>
             <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
             <form action="/admin/logout" method="POST" style="display: inline;">
                 <button type="submit" class="btn-api secondary">Logout</button>
@@ -20,6 +21,7 @@
                 <tr>
                     <th>Key</th>
                     <th>Status</th>
+                    <th>Shuffle</th>
                     <th>Type</th>
                     <th>Stem</th>
                     <th>Options</th>
@@ -31,11 +33,13 @@
                 <tr>
                     <td><code>{{.Key}}</code></td>
                     <td><span class="pill">{{.Status}}</span></td>
+                    <td>{{.ShuffleMode}}</td>
                     <td>{{.Type}}</td>
                     <td>{{.Stem}}</td>
                     <td>{{.OptionCount}}</td>
                     <td>
                         <a href="/admin/questions/{{.ID}}/edit">Edit</a>
+                        <a href="/admin/questions/{{.ID}}/history">History</a>
                         {{if ne .Status "disabled"}}
                         <form action="/admin/questions/{{.ID}}/disable" method="POST" style="display: inline;">
                             <button type="submit" class="btn-api secondary">Disable</button>
@@ -45,7 +49,7 @@
                 </tr>
                 {{else}}
                 <tr>
-                    <td colspan="6">No questions found for the current question set.</td>
+                    <td colspan="7">No questions found for the current question set.</td>
                 </tr>
                 {{end}}
             </tbody>

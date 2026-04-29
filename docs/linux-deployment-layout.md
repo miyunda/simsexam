@@ -105,6 +105,15 @@ SIMSEXAM_ADMIN_SESSION_SECRET=change-this-to-a-long-random-secret
 
 You can start from the bundled `simsexam.env.example`.
 
+Recommended ownership and permissions:
+
+```bash
+sudo chown root:root /etc/simsexam
+sudo chmod 0750 /etc/simsexam
+sudo chown root:simsexam /etc/simsexam/simsexam.env
+sudo chmod 0640 /etc/simsexam/simsexam.env
+```
+
 Field notes:
 
 - `SIMSEXAM_ADDR`

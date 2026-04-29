@@ -1,0 +1,43 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Subject Settings</h1>
+            <p class="subtitle">{{.Title}} · <code>{{.Slug}}</code></p>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/feedback" class="btn-api secondary">Feedback</a>
+            <a href="/admin/subjects" class="btn-api secondary">Back to Subjects</a>
+            <form action="/admin/logout" method="POST" style="display: inline;">
+                <button type="submit" class="btn-api secondary">Logout</button>
+            </form>
+        </div>
+    </div>
+
+    {{if .Errors}}
+    <div class="alert-card alert-error">
+        <strong>Save blocked</strong>
+        <ul class="alert-list">
+            {{range .Errors}}
+            <li>{{.}}</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    <form action="/admin/subjects/{{.SubjectID}}/edit" method="POST" class="admin-form-card">
+        <div class="form-section">
+            <label class="option-correct-toggle">
+                <input type="checkbox" name="shuffle_options_default" {{if .ShuffleOptionsDefault}}checked{{end}}>
+                <span>Shuffle options by default for new exam sessions</span>
+            </label>
+            <p class="table-subtext">Questions can still override this setting individually.</p>
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn-api primary">Save Subject Settings</button>
+        </div>
+    </form>
+</section>
+{{end}}

@@ -240,6 +240,43 @@ CREATE INDEX IF NOT EXISTS idx_exam_question_options_exam_question_display
 	ON exam_question_options(exam_question_id, display_order);
 `,
 	},
+	{
+		Name: "0003_question_feedback",
+		SQL: `
+CREATE TABLE IF NOT EXISTS question_feedback (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	subject_id INTEGER NOT NULL,
+	question_id INTEGER NOT NULL,
+	question_set_id INTEGER NOT NULL,
+	exam_id INTEGER,
+	exam_question_id INTEGER,
+	user_id INTEGER,
+	feedback_type TEXT NOT NULL CHECK (feedback_type IN ('incorrect_answer', 'ambiguous_wording', 'outdated_content', 'typo_or_formatting', 'other')),
+	comment TEXT,
+	status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved', 'dismissed')),
+	resolution_note TEXT,
+	question_snapshot_json TEXT NOT NULL,
+	answer_snapshot_json TEXT NOT NULL,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	resolved_at DATETIME,
+	resolved_by_user_id INTEGER,
+	FOREIGN KEY(subject_id) REFERENCES subjects(id),
+	FOREIGN KEY(question_id) REFERENCES questions(id),
+	FOREIGN KEY(question_set_id) REFERENCES question_sets(id),
+	FOREIGN KEY(exam_id) REFERENCES exams(id),
+	FOREIGN KEY(exam_question_id) REFERENCES exam_questions(id),
+	FOREIGN KEY(user_id) REFERENCES users(id),
+	FOREIGN KEY(resolved_by_user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_question_feedback_status_created_at
+	ON question_feedback(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_question_feedback_subject_created_at
+	ON question_feedback(subject_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_question_feedback_question_created_at
+	ON question_feedback(question_id, created_at);
+`,
+	},
 }
 
 func OpenSQLite(dataSourceName string) (*sql.DB, error) {

@@ -7,7 +7,9 @@
             <p class="subtitle">{{.SubjectTitle}} · <code>{{.Key}}</code></p>
         </div>
         <div style="display: flex; gap: 12px; align-items: center;">
+            <a href="/admin/feedback" class="btn-api secondary">Feedback</a>
             <a href="/admin/subjects/{{.SubjectID}}/questions" class="btn-api secondary">Back to Questions</a>
+            <a href="/admin/questions/{{.QuestionID}}/history" class="btn-api secondary">History</a>
             <form action="/admin/logout" method="POST" style="display: inline;">
                 <button type="submit" class="btn-api secondary">Logout</button>
             </form>
@@ -42,6 +44,15 @@
         <div class="form-section">
             <label for="explanation">Explanation</label>
             <textarea id="explanation" name="explanation" rows="6">{{.Explanation}}</textarea>
+        </div>
+
+        <div class="form-section">
+            <label for="allow_option_shuffle">Option Shuffling</label>
+            <select id="allow_option_shuffle" name="allow_option_shuffle" class="form-select">
+                <option value="inherit" {{if eq .AllowOptionShuffle "inherit"}}selected{{end}}>inherit subject default</option>
+                <option value="allow" {{if eq .AllowOptionShuffle "allow"}}selected{{end}}>always allow</option>
+                <option value="disable" {{if eq .AllowOptionShuffle "disable"}}selected{{end}}>never shuffle</option>
+            </select>
         </div>
 
         <div class="form-section">

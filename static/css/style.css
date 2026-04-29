@@ -47,6 +47,24 @@ body {
     padding: 20px;
 }
 
+.main-footer {
+    margin-top: 48px;
+    padding: 20px 0 8px;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    text-align: center;
+    font-size: 0.95rem;
+}
+
+.main-footer p {
+    margin: 0;
+}
+
+.footer-version {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
 .main-header {
     display: flex;
     justify-content: space-between;
@@ -437,6 +455,10 @@ nav a:hover {
     border-left: 4px solid var(--gold);
 }
 
+.alert-success {
+    border-left: 4px solid var(--success);
+}
+
 .alert-list {
     margin: 12px 0 0;
     padding-left: 18px;
@@ -447,4 +469,8 @@ nav a:hover {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 18px;
     margin-bottom: 18px;
+}
+
+.compact-textarea {
+    min-height: 110px !important;
 }

@@ -29,6 +29,7 @@ type adminSubjectRow struct {
 	QuestionCount      int
 	CurrentQuestionSet int
 	CurrentQuestions   int
+	ShuffleOptions     bool
 }
 
 type adminQuestionRow struct {
@@ -36,6 +37,7 @@ type adminQuestionRow struct {
 	Key         string
 	Type        string
 	Status      string
+	ShuffleMode string
 	Stem        string
 	Explanation string
 	OptionCount int
@@ -49,17 +51,47 @@ type adminOptionRow struct {
 }
 
 type adminEditQuestionData struct {
-	SubjectID     int
-	SubjectTitle  string
-	QuestionID    int
-	Key           string
-	Type          string
-	Stem          string
-	Explanation   string
+	SubjectID          int
+	SubjectTitle       string
+	QuestionID         int
+	Key                string
+	Type               string
+	Stem               string
+	Explanation        string
+	AllowOptionShuffle string
+	ChangeSummary      string
+	Options            []adminOptionRow
+	Errors             []string
+	Warnings           []string
+}
+
+type adminEditSubjectData struct {
+	SubjectID             int
+	Title                 string
+	Slug                  string
+	ShuffleOptionsDefault bool
+	Errors                []string
+}
+
+type adminQuestionRevisionRow struct {
+	ID            int
+	CreatedAt     string
 	ChangeSummary string
-	Options       []adminOptionRow
-	Errors        []string
-	Warnings      []string
+	Question      adminQuestionRevisionSnapshot
+}
+
+type adminQuestionRevisionSnapshot struct {
+	Key         string
+	Type        string
+	Stem        string
+	Explanation string
+	Options     []adminQuestionRevisionOption
+}
+
+type adminQuestionRevisionOption struct {
+	SortOrder int
+	Text      string
+	IsCorrect bool
 }
 
 func AdminSubjects(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +105,7 @@ func AdminSubjects(w http.ResponseWriter, r *http.Request) {
 			s.access_level,
 			s.duration_minutes,
 			s.question_count,
+			s.shuffle_options_default,
 			COALESCE(s.current_question_set_id, 0),
 			(
 				SELECT COUNT(*)
@@ -101,6 +134,7 @@ func AdminSubjects(w http.ResponseWriter, r *http.Request) {
 			&row.AccessLevel,
 			&row.DurationMinutes,
 			&row.QuestionCount,
+			&row.ShuffleOptions,
 			&row.CurrentQuestionSet,
 			&row.CurrentQuestions,
 		); err != nil {
@@ -194,7 +228,7 @@ func AdminSubjectQuestions(w http.ResponseWriter, r *http.Request) {
 
 	var subject adminSubjectRow
 	err := database.DB.QueryRow(`
-		SELECT id, slug, title, COALESCE(description, ''), status, access_level, duration_minutes, question_count, COALESCE(current_question_set_id, 0)
+		SELECT id, slug, title, COALESCE(description, ''), status, access_level, duration_minutes, question_count, shuffle_options_default, COALESCE(current_question_set_id, 0)
 		FROM subjects
 		WHERE id = ?
 	`, subjectID).Scan(
@@ -206,6 +240,7 @@ func AdminSubjectQuestions(w http.ResponseWriter, r *http.Request) {
 		&subject.AccessLevel,
 		&subject.DurationMinutes,
 		&subject.QuestionCount,
+		&subject.ShuffleOptions,
 		&subject.CurrentQuestionSet,
 	)
 	if err != nil {
@@ -216,6 +251,11 @@ func AdminSubjectQuestions(w http.ResponseWriter, r *http.Request) {
 	rows, err := database.DB.Query(`
 		SELECT q.id, q.external_key, q.type, q.stem_markdown, COALESCE(q.explanation_markdown, ''),
 		       q.status,
+		       CASE
+		         WHEN q.allow_option_shuffle IS NULL THEN 'inherit'
+		         WHEN q.allow_option_shuffle = 1 THEN 'allow'
+		         ELSE 'disable'
+		       END AS shuffle_mode,
 		       (SELECT COUNT(*) FROM question_options qo WHERE qo.question_id = q.id) AS option_count
 		FROM questions q
 		WHERE q.subject_id = ? AND q.question_set_id = ?
@@ -230,7 +270,7 @@ func AdminSubjectQuestions(w http.ResponseWriter, r *http.Request) {
 	var questions []adminQuestionRow
 	for rows.Next() {
 		var row adminQuestionRow
-		if err := rows.Scan(&row.ID, &row.Key, &row.Type, &row.Stem, &row.Explanation, &row.Status, &row.OptionCount); err != nil {
+		if err := rows.Scan(&row.ID, &row.Key, &row.Type, &row.Stem, &row.Explanation, &row.Status, &row.ShuffleMode, &row.OptionCount); err != nil {
 			http.Error(w, "Failed to load questions", http.StatusInternalServerError)
 			return
 		}
@@ -245,6 +285,41 @@ func AdminSubjectQuestions(w http.ResponseWriter, r *http.Request) {
 		Subject:   subject,
 		Questions: questions,
 	})
+}
+
+func AdminEditSubjectForm(w http.ResponseWriter, r *http.Request) {
+	data, err := loadAdminEditSubjectData(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "Subject not found", http.StatusNotFound)
+		return
+	}
+	renderTemplate(w, "admin_subject_edit.html", data)
+}
+
+func AdminEditSubjectSubmit(w http.ResponseWriter, r *http.Request) {
+	data, err := loadAdminEditSubjectData(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "Subject not found", http.StatusNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		data.Errors = []string{"Failed to parse form."}
+		renderTemplate(w, "admin_subject_edit.html", data)
+		return
+	}
+
+	data.ShuffleOptionsDefault = r.FormValue("shuffle_options_default") == "on"
+	if _, err := database.DB.Exec(`
+		UPDATE subjects
+		SET shuffle_options_default = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, boolToInt(data.ShuffleOptionsDefault), data.SubjectID); err != nil {
+		data.Errors = []string{"Failed to save subject settings: " + err.Error()}
+		renderTemplate(w, "admin_subject_edit.html", data)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/subjects", http.StatusSeeOther)
 }
 
 func AdminArchiveSubject(w http.ResponseWriter, r *http.Request) {
@@ -341,6 +416,21 @@ func AdminDisableQuestion(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/admin/subjects/%d/questions", subjectID), http.StatusSeeOther)
 }
 
+func AdminQuestionHistory(w http.ResponseWriter, r *http.Request) {
+	data, revisions, err := loadAdminQuestionHistoryData(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "Question not found", http.StatusNotFound)
+		return
+	}
+	renderTemplate(w, "admin_question_history.html", struct {
+		Question  adminEditQuestionData
+		Revisions []adminQuestionRevisionRow
+	}{
+		Question:  data,
+		Revisions: revisions,
+	})
+}
+
 func AdminEditQuestionForm(w http.ResponseWriter, r *http.Request) {
 	data, err := loadAdminEditQuestionData(chi.URLParam(r, "id"))
 	if err != nil {
@@ -366,6 +456,7 @@ func AdminEditQuestionSubmit(w http.ResponseWriter, r *http.Request) {
 	data.Type = strings.TrimSpace(r.FormValue("type"))
 	data.Stem = strings.TrimSpace(r.FormValue("stem"))
 	data.Explanation = strings.TrimSpace(r.FormValue("explanation"))
+	data.AllowOptionShuffle = strings.TrimSpace(r.FormValue("allow_option_shuffle"))
 	data.ChangeSummary = strings.TrimSpace(r.FormValue("change_summary"))
 
 	optionTexts := r.Form["option_text"]
@@ -466,11 +557,16 @@ func loadAdminEditQuestionData(rawID string) (adminEditQuestionData, error) {
 
 	var data adminEditQuestionData
 	err := database.DB.QueryRow(`
-		SELECT q.id, q.external_key, q.type, q.stem_markdown, COALESCE(q.explanation_markdown, ''), s.id, s.title
+		SELECT q.id, q.external_key, q.type, q.stem_markdown, COALESCE(q.explanation_markdown, ''), s.id, s.title,
+		       CASE
+		         WHEN q.allow_option_shuffle IS NULL THEN 'inherit'
+		         WHEN q.allow_option_shuffle = 1 THEN 'allow'
+		         ELSE 'disable'
+		       END AS allow_option_shuffle
 		FROM questions q
 		JOIN subjects s ON s.id = q.subject_id
 		WHERE q.id = ?
-	`, questionID).Scan(&data.QuestionID, &data.Key, &data.Type, &data.Stem, &data.Explanation, &data.SubjectID, &data.SubjectTitle)
+	`, questionID).Scan(&data.QuestionID, &data.Key, &data.Type, &data.Stem, &data.Explanation, &data.SubjectID, &data.SubjectTitle, &data.AllowOptionShuffle)
 	if err != nil {
 		return adminEditQuestionData{}, err
 	}
@@ -499,11 +595,94 @@ func loadAdminEditQuestionData(rawID string) (adminEditQuestionData, error) {
 	return data, nil
 }
 
+func loadAdminEditSubjectData(rawID string) (adminEditSubjectData, error) {
+	subjectID, _ := strconv.Atoi(rawID)
+	if subjectID == 0 {
+		return adminEditSubjectData{}, sql.ErrNoRows
+	}
+
+	var data adminEditSubjectData
+	err := database.DB.QueryRow(`
+		SELECT id, title, slug, shuffle_options_default
+		FROM subjects
+		WHERE id = ?
+	`, subjectID).Scan(&data.SubjectID, &data.Title, &data.Slug, &data.ShuffleOptionsDefault)
+	if err != nil {
+		return adminEditSubjectData{}, err
+	}
+	return data, nil
+}
+
+func loadAdminQuestionHistoryData(rawID string) (adminEditQuestionData, []adminQuestionRevisionRow, error) {
+	data, err := loadAdminEditQuestionData(rawID)
+	if err != nil {
+		return adminEditQuestionData{}, nil, err
+	}
+
+	rows, err := database.DB.Query(`
+		SELECT id, COALESCE(change_summary, ''), created_at, snapshot_json
+		FROM question_revisions
+		WHERE question_id = ?
+		ORDER BY created_at DESC, id DESC
+	`, data.QuestionID)
+	if err != nil {
+		return adminEditQuestionData{}, nil, err
+	}
+	defer rows.Close()
+
+	type revisionSnapshot struct {
+		Key         string `json:"key"`
+		Type        string `json:"type"`
+		Stem        string `json:"stem"`
+		Explanation string `json:"explanation"`
+		Options     []struct {
+			SortOrder int    `json:"sort_order"`
+			Text      string `json:"text"`
+			IsCorrect bool   `json:"is_correct"`
+		} `json:"options"`
+	}
+
+	var revisions []adminQuestionRevisionRow
+	for rows.Next() {
+		var (
+			row          adminQuestionRevisionRow
+			snapshotJSON string
+			snapshot     revisionSnapshot
+		)
+		if err := rows.Scan(&row.ID, &row.ChangeSummary, &row.CreatedAt, &snapshotJSON); err != nil {
+			return adminEditQuestionData{}, nil, err
+		}
+		if err := json.Unmarshal([]byte(snapshotJSON), &snapshot); err != nil {
+			return adminEditQuestionData{}, nil, err
+		}
+
+		row.Question = adminQuestionRevisionSnapshot{
+			Key:         snapshot.Key,
+			Type:        snapshot.Type,
+			Stem:        snapshot.Stem,
+			Explanation: snapshot.Explanation,
+		}
+		for _, opt := range snapshot.Options {
+			row.Question.Options = append(row.Question.Options, adminQuestionRevisionOption{
+				SortOrder: opt.SortOrder,
+				Text:      opt.Text,
+				IsCorrect: opt.IsCorrect,
+			})
+		}
+		revisions = append(revisions, row)
+	}
+
+	return data, revisions, nil
+}
+
 func validateAdminEditQuestion(data adminEditQuestionData) []string {
 	var errors []string
 
 	if data.Type != "single" && data.Type != "multiple" {
 		errors = append(errors, "Question type must be single or multiple.")
+	}
+	if data.AllowOptionShuffle != "inherit" && data.AllowOptionShuffle != "allow" && data.AllowOptionShuffle != "disable" {
+		errors = append(errors, "Option shuffling mode must be inherit, allow, or disable.")
 	}
 	if data.Stem == "" {
 		errors = append(errors, "Question stem is required.")
@@ -546,9 +725,9 @@ func persistAdminQuestionEdit(data adminEditQuestionData) error {
 
 	if _, err := tx.Exec(`
 		UPDATE questions
-		SET type = ?, stem_markdown = ?, explanation_markdown = ?, updated_at = CURRENT_TIMESTAMP
+		SET type = ?, stem_markdown = ?, explanation_markdown = ?, allow_option_shuffle = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, data.Type, data.Stem, emptyStringToNil(data.Explanation), data.QuestionID); err != nil {
+	`, data.Type, data.Stem, emptyStringToNil(data.Explanation), adminAllowOptionShuffleValue(data.AllowOptionShuffle), data.QuestionID); err != nil {
 		return err
 	}
 
@@ -630,4 +809,15 @@ func emptyStringToNil(v string) any {
 		return nil
 	}
 	return v
+}
+
+func adminAllowOptionShuffleValue(mode string) any {
+	switch mode {
+	case "allow":
+		return 1
+	case "disable":
+		return 0
+	default:
+		return nil
+	}
 }

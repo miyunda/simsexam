@@ -204,12 +204,59 @@ For now, one record per learner report is enough because the primary value is:
 
 ### Feedback List
 
+The first version should present feedback as a question-quality work queue, not as a support inbox.
+
 Provide an admin page with:
 
 - status filter
 - subject filter
 - feedback type filter
 - sort by newest
+- per-row report count for the same question
+- a direct link to the feedback detail page
+
+Each row should show:
+
+- subject title
+- question key or stem excerpt
+- feedback type
+- current status
+- created time
+- total reports for the same question
+
+The default list view should focus on `open` feedback so administrators land on unresolved items first.
+
+### Feedback Detail
+
+Each feedback item should have a dedicated detail page.
+
+That page should be split into two sections:
+
+- `Learner Report`
+- `Exam Context`
+
+The learner report section should show:
+
+- feedback type
+- optional learner comment
+- created time
+- current status
+- resolution note when present
+
+The exam context section should show:
+
+- question stem snapshot
+- explanation snapshot
+- option list in displayed order
+- which options were marked correct in that snapshot
+- learner-selected options
+- whether the learner answer was judged correct
+
+The detail page should provide only a small set of admin actions:
+
+- `Resolve`
+- `Dismiss`
+- `Edit Question`
 
 ### Question-Level Aggregation
 
@@ -238,6 +285,8 @@ From a feedback item, the administrator should be able to:
 - edit the question if needed
 - save a resolution note
 - mark the feedback as resolved or dismissed
+
+This keeps feedback as a signal and review surface, while the actual question change still happens through the normal question editor and revision history flow.
 
 Question feedback should never update the question bank automatically.
 

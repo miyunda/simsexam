@@ -9,6 +9,13 @@
         <a href="/" class="btn-api secondary">Back to Home</a>
     </div>
 
+    {{if .FeedbackSubmitted}}
+    <div class="alert-card alert-success">
+        <strong>Feedback submitted</strong>
+        <p class="table-subtext">Thank you. The report was added to the admin review queue.</p>
+    </div>
+    {{end}}
+
     {{if .Reviews}}
     <div class="review-section">
         <h2>Review Incorrect Answers</h2>
@@ -24,6 +31,31 @@
                         <div class="explanation-body">{{.Explanation}}</div>
                     </div>
                 </div>
+
+                <form action="/exam/{{$.ExamID}}/feedback" method="POST" class="admin-form-card" style="margin-top: 20px;">
+                    <input type="hidden" name="question_id" value="{{.QuestionID}}">
+
+                    <div class="form-section">
+                        <label for="feedback_type_{{.QuestionID}}">Report a Question Issue</label>
+                        <select id="feedback_type_{{.QuestionID}}" name="feedback_type" class="form-select">
+                            <option value="incorrect_answer">incorrect answer</option>
+                            <option value="ambiguous_wording">ambiguous wording</option>
+                            <option value="outdated_content">outdated content</option>
+                            <option value="typo_or_formatting">typo or formatting</option>
+                            <option value="other">other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-section">
+                        <label for="comment_{{.QuestionID}}">Comment</label>
+                        <textarea id="comment_{{.QuestionID}}" name="comment" rows="4" class="compact-textarea"
+                            placeholder="Optional note for the administrator."></textarea>
+                    </div>
+
+                    <div class="actions">
+                        <button type="submit" class="btn-api secondary">Submit Feedback</button>
+                    </div>
+                </form>
             </div>
             {{end}}
         </div>

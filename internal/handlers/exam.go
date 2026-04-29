@@ -286,6 +286,7 @@ func ExamResult(w http.ResponseWriter, r *http.Request) {
 
 	type ReviewItem struct {
 		Number        int
+		QuestionID    int
 		Question      string
 		UserAnswer    string
 		CorrectAnswer string
@@ -332,6 +333,7 @@ func ExamResult(w http.ResponseWriter, r *http.Request) {
 		htmlBytes := markdown.ToHTML([]byte(explanation), nil, nil)
 		reviews = append(reviews, ReviewItem{
 			Number:        position,
+			QuestionID:    questionID,
 			Question:      cleanQuestionText(qText),
 			UserAnswer:    joinAnswerTexts(userAnswers),
 			CorrectAnswer: joinAnswerTexts(correctAnswers),
@@ -346,11 +348,15 @@ func ExamResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Score   int
-		Reviews []ReviewItem
+		ExamID            int
+		Score             int
+		Reviews           []ReviewItem
+		FeedbackSubmitted bool
 	}{
-		Score:   score,
-		Reviews: reviews,
+		ExamID:            examID,
+		Score:             score,
+		Reviews:           reviews,
+		FeedbackSubmitted: r.URL.Query().Get("feedback") == "submitted",
 	}
 
 	renderTemplate(w, "result.html", data)
