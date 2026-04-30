@@ -24,6 +24,8 @@
                 <p><span class="label">Saved At:</span> {{.CreatedAt}}</p>
                 <p><span class="label">Summary:</span> {{if .ChangeSummary}}{{.ChangeSummary}}{{else}}(no summary){{end}}</p>
                 <p><span class="label">Type:</span> {{.Question.Type}}</p>
+                <p><span class="label">Status:</span> {{if .Question.Status}}{{.Question.Status}}{{else}}(not captured){{end}}</p>
+                <p><span class="label">Option Shuffling:</span> {{if .Question.ShuffleMode}}{{.Question.ShuffleMode}}{{else}}(not captured){{end}}</p>
                 <p><span class="label">Stem:</span> {{.Question.Stem}}</p>
                 <p><span class="label">Explanation:</span> {{if .Question.Explanation}}{{.Question.Explanation}}{{else}}(empty){{end}}</p>
                 <div class="options-editor">
