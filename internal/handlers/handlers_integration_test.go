@@ -471,9 +471,72 @@ func TestAdminEditQuestionUpdatesQuestionAndCreatesRevision(t *testing.T) {
 	if !strings.Contains(body, "What color is the sky on a clear day?") {
 		t.Fatalf("expected history page to contain previous stem snapshot, got body: %s", body)
 	}
+	if !strings.Contains(body, "Status:</span> active") {
+		t.Fatalf("expected history page to contain snapshot status, got body: %s", body)
+	}
+	if !strings.Contains(body, "Option Shuffling:</span> inherit subject default") {
+		t.Fatalf("expected history page to contain snapshot shuffle mode, got body: %s", body)
+	}
 }
 
-func TestAdminArchiveSubjectRemovesItFromHome(t *testing.T) {
+func TestAdminEditQuestionGeneratesRevisionSummaryWhenBlank(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
+
+	form := url.Values{}
+	form.Set("type", "multiple")
+	form.Set("stem", "What colors can appear in the daytime sky?")
+	form.Set("explanation", "The apparent sky color depends on light scattering and weather.")
+	form.Set("allow_option_shuffle", "allow")
+	form.Add("option_id", "1")
+	form.Add("option_id", "2")
+	form.Add("option_id", "3")
+	form.Add("option_id", "4")
+	form.Add("option_text", "Blue")
+	form.Add("option_text", "Gray")
+	form.Add("option_text", "Orange")
+	form.Add("option_text", "Purple")
+	form.Add("correct_index", "0")
+	form.Add("correct_index", "1")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/questions/1/edit", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(adminCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from edit submit, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var summary string
+	if err := database.DB.QueryRow(`
+		SELECT change_summary
+		FROM question_revisions
+		WHERE question_id = 1
+		ORDER BY id DESC
+		LIMIT 1
+	`).Scan(&summary); err != nil {
+		t.Fatalf("query generated revision summary failed: %v", err)
+	}
+
+	expectedParts := []string{
+		"Changed question type from single to multiple",
+		"Updated question stem",
+		"Updated explanation",
+		"Changed option shuffling from inherit subject default to always allow",
+		"Updated option text",
+		"Updated correct options",
+	}
+	for _, part := range expectedParts {
+		if !strings.Contains(summary, part) {
+			t.Fatalf("expected generated summary to contain %q, got %q", part, summary)
+		}
+	}
+}
+
+func TestAdminArchiveAndRestoreSubjectUpdatesHomeVisibility(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
 	adminCookie := adminSessionCookie(t, router)
@@ -505,9 +568,48 @@ func TestAdminArchiveSubjectRemovesItFromHome(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "SE Demo Subject") {
 		t.Fatalf("expected archived subject to disappear from home page, got body: %s", rec.Body.String())
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/subjects", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on admin subjects page after archive, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Restore") {
+		t.Fatalf("expected archived subject row to show restore action, got body: %s", rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/subjects/1/restore", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from restore submit, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	if err := database.DB.QueryRow(`SELECT status FROM subjects WHERE id = 1`).Scan(&status); err != nil {
+		t.Fatalf("query restored subject failed: %v", err)
+	}
+	if status != "published" {
+		t.Fatalf("expected subject status published, got %q", status)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on home page after restore, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "SE Demo Subject") {
+		t.Fatalf("expected restored subject to reappear on home page, got body: %s", rec.Body.String())
+	}
 }
 
-func TestAdminDisableQuestionUpdatesStatusAndCreatesRevision(t *testing.T) {
+func TestAdminDisableAndEnableQuestionUpdatesStatusAndCreatesRevisions(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
 	adminCookie := adminSessionCookie(t, router)
@@ -548,6 +650,9 @@ func TestAdminDisableQuestionUpdatesStatusAndCreatesRevision(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "disabled") {
 		t.Fatalf("expected disabled status on admin questions page, got body: %s", rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), "Enable") {
+		t.Fatalf("expected disabled question row to show enable action, got body: %s", rec.Body.String())
+	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/questions/1/history", nil)
 	req.AddCookie(adminCookie)
@@ -557,8 +662,49 @@ func TestAdminDisableQuestionUpdatesStatusAndCreatesRevision(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 on question history page after disable, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "Question disabled from admin list") {
+	if !strings.Contains(rec.Body.String(), "Disabled question from admin question list") {
 		t.Fatalf("expected disable summary in history page, got body: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Status:</span> active") {
+		t.Fatalf("expected disable revision snapshot to show previous active status, got body: %s", rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/questions/1/enable", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from enable submit, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	if err := database.DB.QueryRow(`SELECT status FROM questions WHERE id = 1`).Scan(&status); err != nil {
+		t.Fatalf("query enabled question failed: %v", err)
+	}
+	if status != "active" {
+		t.Fatalf("expected question status active, got %q", status)
+	}
+
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM question_revisions WHERE question_id = 1`).Scan(&revisionCount); err != nil {
+		t.Fatalf("count question revisions after enable failed: %v", err)
+	}
+	if revisionCount != 2 {
+		t.Fatalf("expected 2 question revisions after enable, got %d", revisionCount)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/questions/1/history", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on question history page after enable, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Re-enabled question from admin question list") {
+		t.Fatalf("expected enable summary in history page, got body: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Status:</span> disabled") {
+		t.Fatalf("expected enable revision snapshot to show previous disabled status, got body: %s", rec.Body.String())
 	}
 }
 

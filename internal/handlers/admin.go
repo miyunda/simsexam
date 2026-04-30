@@ -83,6 +83,8 @@ type adminQuestionRevisionRow struct {
 type adminQuestionRevisionSnapshot struct {
 	Key         string
 	Type        string
+	Status      string
+	ShuffleMode string
 	Stem        string
 	Explanation string
 	Options     []adminQuestionRevisionOption
@@ -323,35 +325,60 @@ func AdminEditSubjectSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminArchiveSubject(w http.ResponseWriter, r *http.Request) {
+	updateAdminSubjectStatus(w, r, "archived", "Failed to archive subject")
+}
+
+func AdminRestoreSubject(w http.ResponseWriter, r *http.Request) {
+	updateAdminSubjectStatus(w, r, "published", "Failed to restore subject")
+}
+
+func AdminDisableQuestion(w http.ResponseWriter, r *http.Request) {
+	updateAdminQuestionStatus(w, r, "disabled", "Disabled question from admin question list", "Failed to disable question")
+}
+
+func AdminEnableQuestion(w http.ResponseWriter, r *http.Request) {
+	updateAdminQuestionStatus(w, r, "active", "Re-enabled question from admin question list", "Failed to enable question")
+}
+
+func updateAdminSubjectStatus(w http.ResponseWriter, r *http.Request, nextStatus, failureMessage string) {
 	subjectID, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	if subjectID == 0 {
 		http.Error(w, "Invalid subject", http.StatusBadRequest)
 		return
 	}
 
-	result, err := database.DB.Exec(`
-		UPDATE subjects
-		SET status = 'archived', updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND status != 'archived'
-	`, subjectID)
-	if err != nil {
-		http.Error(w, "Failed to archive subject", http.StatusInternalServerError)
-		return
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		http.Error(w, "Failed to archive subject", http.StatusInternalServerError)
-		return
-	}
-	if affected == 0 {
+	var currentStatus string
+	err := database.DB.QueryRow(`
+		SELECT status
+		FROM subjects
+		WHERE id = ?
+	`, subjectID).Scan(&currentStatus)
+	if err == sql.ErrNoRows {
 		http.Error(w, "Subject not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, failureMessage, http.StatusInternalServerError)
+		return
+	}
+	if currentStatus == nextStatus {
+		http.Redirect(w, r, "/admin/subjects", http.StatusSeeOther)
+		return
+	}
+
+	if _, err := database.DB.Exec(`
+		UPDATE subjects
+		SET status = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, nextStatus, subjectID); err != nil {
+		http.Error(w, failureMessage, http.StatusInternalServerError)
 		return
 	}
 
 	http.Redirect(w, r, "/admin/subjects", http.StatusSeeOther)
 }
 
-func AdminDisableQuestion(w http.ResponseWriter, r *http.Request) {
+func updateAdminQuestionStatus(w http.ResponseWriter, r *http.Request, nextStatus, changeSummary, failureMessage string) {
 	questionID, _ := strconv.Atoi(chi.URLParam(r, "id"))
 	if questionID == 0 {
 		http.Error(w, "Invalid question", http.StatusBadRequest)
@@ -360,7 +387,7 @@ func AdminDisableQuestion(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := database.DB.Begin()
 	if err != nil {
-		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		http.Error(w, failureMessage, http.StatusInternalServerError)
 		return
 	}
 	defer tx.Rollback()
@@ -377,39 +404,39 @@ func AdminDisableQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		http.Error(w, failureMessage, http.StatusInternalServerError)
 		return
 	}
-	if status == "disabled" {
+	if status == nextStatus {
 		http.Redirect(w, r, fmt.Sprintf("/admin/subjects/%d/questions", subjectID), http.StatusSeeOther)
 		return
 	}
 
 	snapshot, err := questionSnapshot(tx, questionID)
 	if err != nil {
-		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		http.Error(w, failureMessage, http.StatusInternalServerError)
 		return
 	}
 
 	if _, err := tx.Exec(`
 		UPDATE questions
-		SET status = 'disabled', updated_at = CURRENT_TIMESTAMP
+		SET status = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, questionID); err != nil {
-		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+	`, nextStatus, questionID); err != nil {
+		http.Error(w, failureMessage, http.StatusInternalServerError)
 		return
 	}
 
 	if _, err := tx.Exec(`
 		INSERT INTO question_revisions (question_id, change_summary, snapshot_json)
 		VALUES (?, ?, ?)
-	`, questionID, "Question disabled from admin list", snapshot); err != nil {
-		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+	`, questionID, changeSummary, snapshot); err != nil {
+		http.Error(w, failureMessage, http.StatusInternalServerError)
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
-		http.Error(w, "Failed to disable question", http.StatusInternalServerError)
+		http.Error(w, failureMessage, http.StatusInternalServerError)
 		return
 	}
 
@@ -446,6 +473,7 @@ func AdminEditQuestionSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Question not found", http.StatusNotFound)
 		return
 	}
+	original := cloneAdminEditQuestionData(data)
 
 	if err := r.ParseForm(); err != nil {
 		data.Errors = []string{"Failed to parse form."}
@@ -487,7 +515,7 @@ func AdminEditQuestionSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if data.ChangeSummary == "" {
-		data.ChangeSummary = "Admin question edit"
+		data.ChangeSummary = automaticQuestionChangeSummary(original, data)
 	}
 
 	if err := persistAdminQuestionEdit(data); err != nil {
@@ -631,11 +659,13 @@ func loadAdminQuestionHistoryData(rawID string) (adminEditQuestionData, []adminQ
 	defer rows.Close()
 
 	type revisionSnapshot struct {
-		Key         string `json:"key"`
-		Type        string `json:"type"`
-		Stem        string `json:"stem"`
-		Explanation string `json:"explanation"`
-		Options     []struct {
+		Key                string `json:"key"`
+		Type               string `json:"type"`
+		Status             string `json:"status"`
+		AllowOptionShuffle string `json:"allow_option_shuffle"`
+		Stem               string `json:"stem"`
+		Explanation        string `json:"explanation"`
+		Options            []struct {
 			SortOrder int    `json:"sort_order"`
 			Text      string `json:"text"`
 			IsCorrect bool   `json:"is_correct"`
@@ -659,6 +689,8 @@ func loadAdminQuestionHistoryData(rawID string) (adminEditQuestionData, []adminQ
 		row.Question = adminQuestionRevisionSnapshot{
 			Key:         snapshot.Key,
 			Type:        snapshot.Type,
+			Status:      snapshot.Status,
+			ShuffleMode: adminOptionShuffleSummaryLabel(snapshot.AllowOptionShuffle),
 			Stem:        snapshot.Stem,
 			Explanation: snapshot.Explanation,
 		}
@@ -711,6 +743,79 @@ func validateAdminEditQuestion(data adminEditQuestionData) []string {
 	return errors
 }
 
+func cloneAdminEditQuestionData(data adminEditQuestionData) adminEditQuestionData {
+	clone := data
+	clone.Options = append([]adminOptionRow(nil), data.Options...)
+	return clone
+}
+
+func automaticQuestionChangeSummary(before, after adminEditQuestionData) string {
+	var changes []string
+
+	if before.Type != after.Type {
+		changes = append(changes, fmt.Sprintf("Changed question type from %s to %s", before.Type, after.Type))
+	}
+	if before.Stem != after.Stem {
+		changes = append(changes, "Updated question stem")
+	}
+	if before.Explanation != after.Explanation {
+		changes = append(changes, "Updated explanation")
+	}
+	if before.AllowOptionShuffle != after.AllowOptionShuffle {
+		changes = append(changes, fmt.Sprintf(
+			"Changed option shuffling from %s to %s",
+			adminOptionShuffleSummaryLabel(before.AllowOptionShuffle),
+			adminOptionShuffleSummaryLabel(after.AllowOptionShuffle),
+		))
+	}
+	if adminOptionTextsChanged(before.Options, after.Options) {
+		changes = append(changes, "Updated option text")
+	}
+	if adminCorrectOptionsChanged(before.Options, after.Options) {
+		changes = append(changes, "Updated correct options")
+	}
+
+	if len(changes) == 0 {
+		return "Saved question without content changes"
+	}
+	return strings.Join(changes, "; ")
+}
+
+func adminOptionShuffleSummaryLabel(mode string) string {
+	switch mode {
+	case "allow":
+		return "always allow"
+	case "disable":
+		return "never shuffle"
+	default:
+		return "inherit subject default"
+	}
+}
+
+func adminOptionTextsChanged(before, after []adminOptionRow) bool {
+	if len(before) != len(after) {
+		return true
+	}
+	for i := range before {
+		if before[i].ID != after[i].ID || before[i].Text != after[i].Text {
+			return true
+		}
+	}
+	return false
+}
+
+func adminCorrectOptionsChanged(before, after []adminOptionRow) bool {
+	if len(before) != len(after) {
+		return true
+	}
+	for i := range before {
+		if before[i].ID != after[i].ID || before[i].IsCorrect != after[i].IsCorrect {
+			return true
+		}
+	}
+	return false
+}
+
 func persistAdminQuestionEdit(data adminEditQuestionData) error {
 	tx, err := database.DB.Begin()
 	if err != nil {
@@ -759,20 +864,37 @@ func questionSnapshot(tx *sql.Tx, questionID int) (string, error) {
 		IsCorrect bool   `json:"is_correct"`
 	}
 	type snapshotQuestion struct {
-		ID          int              `json:"id"`
-		Key         string           `json:"key"`
-		Type        string           `json:"type"`
-		Stem        string           `json:"stem"`
-		Explanation string           `json:"explanation"`
-		Options     []snapshotOption `json:"options"`
+		ID                 int              `json:"id"`
+		Key                string           `json:"key"`
+		Type               string           `json:"type"`
+		Status             string           `json:"status"`
+		AllowOptionShuffle string           `json:"allow_option_shuffle"`
+		Stem               string           `json:"stem"`
+		Explanation        string           `json:"explanation"`
+		Options            []snapshotOption `json:"options"`
 	}
 
 	var snap snapshotQuestion
 	if err := tx.QueryRow(`
-		SELECT id, external_key, type, stem_markdown, COALESCE(explanation_markdown, '')
+		SELECT id, external_key, type, status,
+		       CASE
+		         WHEN allow_option_shuffle IS NULL THEN 'inherit'
+		         WHEN allow_option_shuffle = 1 THEN 'allow'
+		         ELSE 'disable'
+		       END AS allow_option_shuffle,
+		       stem_markdown,
+		       COALESCE(explanation_markdown, '')
 		FROM questions
 		WHERE id = ?
-	`, questionID).Scan(&snap.ID, &snap.Key, &snap.Type, &snap.Stem, &snap.Explanation); err != nil {
+	`, questionID).Scan(
+		&snap.ID,
+		&snap.Key,
+		&snap.Type,
+		&snap.Status,
+		&snap.AllowOptionShuffle,
+		&snap.Stem,
+		&snap.Explanation,
+	); err != nil {
 		return "", err
 	}
 
