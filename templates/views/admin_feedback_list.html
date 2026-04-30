@@ -1,5 +1,5 @@
 {{define "content"}}
-<section class="admin-page">
+<section class="admin-page admin-page-wide">
     <div class="admin-page-header">
         <div>
             <p class="eyebrow">Admin</p>
@@ -52,7 +52,16 @@
     </form>
 
     <div class="admin-table-wrap">
-        <table class="admin-table">
+        <table class="admin-table feedback-table">
+            <colgroup>
+                <col class="feedback-col-status">
+                <col class="feedback-col-type">
+                <col class="feedback-col-subject">
+                <col class="feedback-col-question">
+                <col class="feedback-col-count">
+                <col class="feedback-col-created">
+                <col class="feedback-col-action">
+            </colgroup>
             <thead>
                 <tr>
                     <th>Status</th>
@@ -68,15 +77,15 @@
                 {{range .Feedback}}
                 <tr>
                     <td><span class="pill">{{.Status}}</span></td>
-                    <td>{{.FeedbackType}}</td>
+                    <td class="feedback-cell-type">{{.FeedbackType}}</td>
                     <td>{{.SubjectTitle}}</td>
                     <td>
                         {{if .QuestionKey}}<code>{{.QuestionKey}}</code>{{end}}
                         <div class="table-subtext">{{.QuestionStem}}</div>
                     </td>
                     <td>{{.QuestionReportCount}}</td>
-                    <td>{{.CreatedAt}}</td>
-                    <td><a href="/admin/feedback/{{.ID}}">View</a></td>
+                    <td class="feedback-cell-created">{{.CreatedAt}}</td>
+                    <td class="feedback-cell-action"><a href="/admin/feedback/{{.ID}}">View</a></td>
                 </tr>
                 {{else}}
                 <tr>

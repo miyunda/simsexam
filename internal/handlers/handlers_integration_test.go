@@ -632,8 +632,8 @@ func TestQuestionFeedbackSubmissionAndAdminReview(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 on result page, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "Report a Question Issue") {
-		t.Fatalf("expected result page to contain question feedback form, got body: %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "Report a question issue") {
+		t.Fatalf("expected result page to contain question feedback toggle, got body: %s", rec.Body.String())
 	}
 
 	form := url.Values{}

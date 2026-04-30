@@ -41,7 +41,7 @@ body {
 }
 
 .app-container {
-    max-width: 800px;
+    max-width: 1120px;
     margin: 0 auto;
     width: 100%;
     padding: 20px;
@@ -275,6 +275,57 @@ nav a:hover {
     box-shadow: 0 2px 4px rgba(87, 82, 121, 0.05);
 }
 
+.feedback-disclosure {
+    margin-top: 20px;
+}
+
+.feedback-disclosure summary {
+    list-style: none;
+}
+
+.feedback-disclosure summary::-webkit-details-marker {
+    display: none;
+}
+
+.feedback-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    cursor: pointer;
+    color: var(--foam);
+    font-weight: 600;
+    padding: 12px 16px;
+    border: 1px solid var(--highlight-med);
+    border-radius: 12px;
+    background: var(--highlight-low);
+}
+
+.feedback-toggle::before {
+    content: "+";
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.feedback-disclosure[open] .feedback-toggle::before {
+    content: "−";
+}
+
+.feedback-toggle-hint {
+    margin-left: auto;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.feedback-panel {
+    margin-top: 14px;
+}
+
+.feedback-form-card {
+    margin-top: 0;
+}
+
 .review-question {
     margin-top: 0;
     color: var(--text-primary);
@@ -317,6 +368,12 @@ nav a:hover {
     padding: 12px 0 40px;
 }
 
+.admin-page-wide {
+    width: min(1320px, calc(100vw - 40px));
+    margin-left: 50%;
+    transform: translateX(-50%);
+}
+
 .admin-page-header {
     display: flex;
     justify-content: space-between;
@@ -340,12 +397,45 @@ nav a:hover {
 }
 
 .admin-table-wrap {
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .admin-table {
     width: 100%;
     border-collapse: collapse;
+}
+
+.feedback-table {
+    min-width: 1180px;
+}
+
+.feedback-col-status {
+    width: 120px;
+}
+
+.feedback-col-type {
+    width: 170px;
+}
+
+.feedback-col-subject {
+    width: 220px;
+}
+
+.feedback-col-question {
+    width: 100%;
+}
+
+.feedback-col-count {
+    width: 120px;
+}
+
+.feedback-col-created {
+    width: 180px;
+}
+
+.feedback-col-action {
+    width: 90px;
 }
 
 .admin-table th,
@@ -366,6 +456,16 @@ nav a:hover {
 
 .admin-table tbody tr:last-child td {
     border-bottom: none;
+}
+
+.feedback-cell-type,
+.feedback-cell-created,
+.feedback-cell-action {
+    white-space: nowrap;
+}
+
+.feedback-table .table-subtext {
+    overflow-wrap: anywhere;
 }
 
 .table-subtext {
@@ -416,6 +516,23 @@ nav a:hover {
 .form-section textarea {
     resize: vertical;
     min-height: 280px;
+}
+
+@media (max-width: 900px) {
+    .admin-page-wide {
+        width: 100%;
+        margin-left: 0;
+        transform: none;
+    }
+
+    .feedback-toggle {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .feedback-toggle-hint {
+        margin-left: 0;
+    }
 }
 
 .options-editor {

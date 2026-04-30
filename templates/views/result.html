@@ -32,30 +32,39 @@
                     </div>
                 </div>
 
-                <form action="/exam/{{$.ExamID}}/feedback" method="POST" class="admin-form-card" style="margin-top: 20px;">
-                    <input type="hidden" name="question_id" value="{{.QuestionID}}">
+                <details class="feedback-disclosure">
+                    <summary class="feedback-toggle">
+                        <span>Report a question issue</span>
+                        <span class="feedback-toggle-hint">Click to open the report form</span>
+                    </summary>
 
-                    <div class="form-section">
-                        <label for="feedback_type_{{.QuestionID}}">Report a Question Issue</label>
-                        <select id="feedback_type_{{.QuestionID}}" name="feedback_type" class="form-select">
-                            <option value="incorrect_answer">incorrect answer</option>
-                            <option value="ambiguous_wording">ambiguous wording</option>
-                            <option value="outdated_content">outdated content</option>
-                            <option value="typo_or_formatting">typo or formatting</option>
-                            <option value="other">other</option>
-                        </select>
-                    </div>
+                    <div class="feedback-panel">
+                        <form action="/exam/{{$.ExamID}}/feedback" method="POST" class="admin-form-card feedback-form-card">
+                            <input type="hidden" name="question_id" value="{{.QuestionID}}">
 
-                    <div class="form-section">
-                        <label for="comment_{{.QuestionID}}">Comment</label>
-                        <textarea id="comment_{{.QuestionID}}" name="comment" rows="4" class="compact-textarea"
-                            placeholder="Optional note for the administrator."></textarea>
-                    </div>
+                            <div class="form-section">
+                                <label for="feedback_type_{{.QuestionID}}">Feedback Type</label>
+                                <select id="feedback_type_{{.QuestionID}}" name="feedback_type" class="form-select">
+                                    <option value="incorrect_answer">incorrect answer</option>
+                                    <option value="ambiguous_wording">ambiguous wording</option>
+                                    <option value="outdated_content">outdated content</option>
+                                    <option value="typo_or_formatting">typo or formatting</option>
+                                    <option value="other">other</option>
+                                </select>
+                            </div>
 
-                    <div class="actions">
-                        <button type="submit" class="btn-api secondary">Submit Feedback</button>
+                            <div class="form-section">
+                                <label for="comment_{{.QuestionID}}">Comment</label>
+                                <textarea id="comment_{{.QuestionID}}" name="comment" rows="4" class="compact-textarea"
+                                    placeholder="Optional note for the administrator."></textarea>
+                            </div>
+
+                            <div class="actions">
+                                <button type="submit" class="btn-api secondary">Submit Feedback</button>
+                            </div>
+                        </form>
                     </div>
-                </form>
+                </details>
             </div>
             {{end}}
         </div>
