@@ -90,16 +90,17 @@ func SubmitQuestionFeedback(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	var (
-		subjectID      int
-		questionSetID  int
-		examQuestionID int
+		subjectID          int
+		questionSetID      int
+		examQuestionID     int
+		anonymousSessionID sql.NullInt64
 	)
 	err = tx.QueryRow(`
-		SELECT e.subject_id, e.question_set_id, eq.id
+		SELECT e.subject_id, e.question_set_id, eq.id, e.anonymous_session_id
 		FROM exams e
 		JOIN exam_questions eq ON eq.exam_id = e.id
 		WHERE e.id = ? AND eq.question_id = ?
-	`, examID, questionID).Scan(&subjectID, &questionSetID, &examQuestionID)
+	`, examID, questionID).Scan(&subjectID, &questionSetID, &examQuestionID, &anonymousSessionID)
 	if err != nil {
 		http.Error(w, "Question not found in exam", http.StatusBadRequest)
 		return
@@ -114,9 +115,9 @@ func SubmitQuestionFeedback(w http.ResponseWriter, r *http.Request) {
 	if _, err := tx.Exec(`
 		INSERT INTO question_feedback (
 			subject_id, question_id, question_set_id, exam_id, exam_question_id,
-			feedback_type, comment, status, question_snapshot_json, answer_snapshot_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
-	`, subjectID, questionID, questionSetID, examID, examQuestionID, feedbackType, emptyStringToNil(comment), questionSnapshotJSON, answerSnapshotJSON); err != nil {
+			anonymous_session_id, feedback_type, comment, status, question_snapshot_json, answer_snapshot_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+	`, subjectID, questionID, questionSetID, examID, examQuestionID, anonymousSessionID, feedbackType, emptyStringToNil(comment), questionSnapshotJSON, answerSnapshotJSON); err != nil {
 		http.Error(w, "Failed to submit feedback", http.StatusInternalServerError)
 		return
 	}

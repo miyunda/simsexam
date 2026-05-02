@@ -57,6 +57,12 @@ func NewRouter(cfg config.ServerConfig) http.Handler {
 	r.Handle("/static/*", http.StripPrefix("/static", fileServer))
 
 	r.Get("/", handlers.Home)
+	r.Get("/register", handlers.RegisterForm(cfg))
+	r.Post("/register", handlers.RegisterSubmit(cfg))
+	r.Get("/login", handlers.LoginForm(cfg))
+	r.Post("/login", handlers.LoginSubmit(cfg))
+	r.Post("/logout", handlers.UserLogout)
+	r.Get("/me", handlers.AccountPage(cfg))
 	r.Get("/admin/login", handlers.AdminLoginForm(cfg))
 	r.Post("/admin/login", handlers.AdminLoginSubmit(cfg))
 	r.Post("/admin/logout", handlers.AdminLogout)

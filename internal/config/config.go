@@ -8,6 +8,7 @@ const (
 	EnvImportSourceType = "SIMSEXAM_IMPORT_SOURCE_TYPE"
 	EnvAdminPassword    = "SIMSEXAM_ADMIN_PASSWORD"
 	EnvAdminSessionKey  = "SIMSEXAM_ADMIN_SESSION_SECRET"
+	EnvUserSessionKey   = "SIMSEXAM_USER_SESSION_SECRET"
 )
 
 const (
@@ -25,6 +26,7 @@ type ServerConfig struct {
 	Addr               string
 	AdminPassword      string
 	AdminSessionSecret string
+	UserSessionSecret  string
 }
 
 type ImportConfig struct {
@@ -38,6 +40,7 @@ func LoadServerConfig() ServerConfig {
 		Addr:               envOrDefault(EnvAddr, DefaultAddr),
 		AdminPassword:      os.Getenv(EnvAdminPassword),
 		AdminSessionSecret: os.Getenv(EnvAdminSessionKey),
+		UserSessionSecret:  os.Getenv(EnvUserSessionKey),
 	}
 }
 

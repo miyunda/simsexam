@@ -133,13 +133,15 @@ Current runtime configuration entry points:
 - `SIMSEXAM_IMPORT_SOURCE_TYPE`
 - `SIMSEXAM_ADMIN_PASSWORD`
 - `SIMSEXAM_ADMIN_SESSION_SECRET`
+- `SIMSEXAM_USER_SESSION_SECRET`
 
-These are loaded centrally through `internal/config`. Runtime database settings are shared by `server`, `migrate`, `bootstrapv1`, and `importer`; admin access settings are used by `server`.
+These are loaded centrally through `internal/config`. Runtime database settings are shared by `server`, `migrate`, `bootstrapv1`, and `importer`; admin access and learner login settings are used by `server`.
 
 Operational recommendation:
 
 - avoid spaces in `SIMSEXAM_ADMIN_PASSWORD`
 - use a long random base64 or hex value without spaces for `SIMSEXAM_ADMIN_SESSION_SECRET`
+- use a separate long random base64 or hex value without spaces for `SIMSEXAM_USER_SESSION_SECRET`
 
 ## 9. Future Evolution Order
 

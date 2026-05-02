@@ -47,6 +47,12 @@ func StartExam(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	anonymousSessionID, anonymousCookie, err := ensureAnonymousSessionTx(r, tx)
+	if err != nil {
+		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
+		return
+	}
+
 	var questionSetID int
 	var questionCount int
 	err = tx.QueryRow(`
@@ -60,9 +66,9 @@ func StartExam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := tx.Exec(`
-		INSERT INTO exams (subject_id, question_set_id, mode, status)
-		VALUES (?, ?, 'practice', 'in_progress')
-	`, subjectID, questionSetID)
+		INSERT INTO exams (subject_id, question_set_id, anonymous_session_id, mode, status)
+		VALUES (?, ?, ?, 'practice', 'in_progress')
+	`, subjectID, questionSetID, anonymousSessionID)
 	if err != nil {
 		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
 		return
@@ -121,6 +127,7 @@ func StartExam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	http.SetCookie(w, anonymousCookie)
 	http.Redirect(w, r, fmt.Sprintf("/exam/%d/question/1", examID), http.StatusSeeOther)
 }
 

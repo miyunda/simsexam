@@ -128,6 +128,9 @@ Field notes:
 - `SIMSEXAM_ADMIN_SESSION_SECRET`
   - used to sign the admin session cookie; must be long and random in production
   - use a base64 or hex secret without spaces
+- `SIMSEXAM_USER_SESSION_SECRET`
+  - used to sign learner login session cookies; must be long, random, and distinct from the admin session secret
+  - use a base64 or hex secret without spaces
 
 ## 4. systemd Unit Location
 

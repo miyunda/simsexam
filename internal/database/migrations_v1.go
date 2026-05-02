@@ -277,6 +277,37 @@ CREATE INDEX IF NOT EXISTS idx_question_feedback_question_created_at
 	ON question_feedback(question_id, created_at);
 `,
 	},
+	{
+		Name: "0004_anonymous_learning_sessions",
+		SQL: `
+CREATE TABLE IF NOT EXISTS anonymous_sessions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	token_hash TEXT NOT NULL UNIQUE,
+	first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	claimed_user_id INTEGER,
+	claimed_at DATETIME,
+	FOREIGN KEY(claimed_user_id) REFERENCES users(id)
+);
+
+ALTER TABLE exams ADD COLUMN anonymous_session_id INTEGER REFERENCES anonymous_sessions(id);
+ALTER TABLE question_feedback ADD COLUMN anonymous_session_id INTEGER REFERENCES anonymous_sessions(id);
+
+CREATE INDEX IF NOT EXISTS idx_anonymous_sessions_last_seen_at
+	ON anonymous_sessions(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_exams_anonymous_session_started_at
+	ON exams(anonymous_session_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_question_feedback_anonymous_session_created_at
+	ON question_feedback(anonymous_session_id, created_at);
+`,
+	},
+	{
+		Name: "0005_email_password_auth",
+		SQL: `
+ALTER TABLE users ADD COLUMN password_hash TEXT;
+ALTER TABLE users ADD COLUMN email_verified_at DATETIME;
+`,
+	},
 }
 
 func OpenSQLite(dataSourceName string) (*sql.DB, error) {

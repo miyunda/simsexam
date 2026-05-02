@@ -52,6 +52,104 @@ func TestHomeRendersPublishedSubject(t *testing.T) {
 	}
 }
 
+func TestUserRegisterLoginAndAccountPage(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "Learner@Example.COM")
+	registerForm.Set("display_name", "Learner One")
+	registerForm.Set("password", "correct-password")
+
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Location") != "/me" {
+		t.Fatalf("expected register redirect to /me, got %q", rec.Header().Get("Location"))
+	}
+	registerCookie := userSessionCookieFromRecorder(t, rec)
+
+	var (
+		userID       int
+		email        string
+		passwordHash string
+	)
+	if err := database.DB.QueryRow(`
+		SELECT id, email, password_hash
+		FROM users
+		WHERE email = 'learner@example.com'
+	`).Scan(&userID, &email, &passwordHash); err != nil {
+		t.Fatalf("query registered user failed: %v", err)
+	}
+	if userID == 0 || email != "learner@example.com" {
+		t.Fatalf("unexpected registered user id=%d email=%q", userID, email)
+	}
+	if passwordHash == "" || strings.Contains(passwordHash, "correct-password") {
+		t.Fatalf("expected stored password hash, got %q", passwordHash)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/me", nil)
+	req.AddCookie(registerCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on account page, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Learner One") {
+		t.Fatalf("expected account page to contain display name, got body: %s", rec.Body.String())
+	}
+
+	loginForm := url.Values{}
+	loginForm.Set("email", "learner@example.com")
+	loginForm.Set("password", "correct-password")
+	req = httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from login, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	userSessionCookieFromRecorder(t, rec)
+}
+
+func TestUserLoginRejectsInvalidPassword(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "learner@example.com")
+	registerForm.Set("password", "correct-password")
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	loginForm := url.Values{}
+	loginForm.Set("email", "learner@example.com")
+	loginForm.Set("password", "wrong-password")
+	req = httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 from invalid login, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Header().Get("Set-Cookie"), "simsexam_user_session") {
+		t.Fatal("expected invalid login not to set user session cookie")
+	}
+}
+
 func TestExamFlowPerfectScore(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
@@ -186,6 +284,168 @@ func TestExamStartPersistsOptionDisplayOrder(t *testing.T) {
 
 	if firstRec.Body.String() != secondRec.Body.String() {
 		t.Fatalf("expected repeated question renders to preserve option order")
+	}
+}
+
+func TestExamStartPersistsAnonymousSession(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	firstExamID, anonCookie := startExamWithCookie(t, router, 1, nil)
+	if anonCookie == nil {
+		t.Fatal("expected anonymous session cookie after starting exam")
+	}
+
+	var firstSessionID int
+	if err := database.DB.QueryRow(`
+		SELECT anonymous_session_id
+		FROM exams
+		WHERE id = ?
+	`, firstExamID).Scan(&firstSessionID); err != nil {
+		t.Fatalf("query first exam anonymous session failed: %v", err)
+	}
+	if firstSessionID == 0 {
+		t.Fatal("expected first exam to be linked to an anonymous session")
+	}
+
+	secondExamID, refreshedCookie := startExamWithCookie(t, router, 1, anonCookie)
+	if refreshedCookie == nil {
+		t.Fatal("expected refreshed anonymous session cookie after starting second exam")
+	}
+	if refreshedCookie.Value != anonCookie.Value {
+		t.Fatal("expected anonymous session cookie token to be reused")
+	}
+
+	var secondSessionID int
+	if err := database.DB.QueryRow(`
+		SELECT anonymous_session_id
+		FROM exams
+		WHERE id = ?
+	`, secondExamID).Scan(&secondSessionID); err != nil {
+		t.Fatalf("query second exam anonymous session failed: %v", err)
+	}
+	if secondSessionID != firstSessionID {
+		t.Fatalf("expected second exam to reuse anonymous session %d, got %d", firstSessionID, secondSessionID)
+	}
+}
+
+func TestRegisterClaimsAnonymousExamAndFeedbackHistory(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	examID, anonCookie := startExamWithCookie(t, router, 1, nil)
+	if anonCookie == nil {
+		t.Fatal("expected anonymous session cookie after starting exam")
+	}
+	totalQuestions := examQuestionCountForTest(t, examID)
+	firstQuestionID, correctOptionIDs := examQuestionAndCorrectOptions(t, examID, 1)
+	postAnswer(t, router, examID, firstQuestionID, 1, wrongOptionIDs(t, firstQuestionID, correctOptionIDs), totalQuestions == 1)
+	for position := 2; position <= totalQuestions; position++ {
+		questionID, correctIDs := examQuestionAndCorrectOptions(t, examID, position)
+		postAnswer(t, router, examID, questionID, position, correctIDs, position == totalQuestions)
+	}
+
+	feedbackForm := url.Values{}
+	feedbackForm.Set("question_id", strconv.Itoa(firstQuestionID))
+	feedbackForm.Set("feedback_type", "incorrect_answer")
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/exam/%d/feedback", examID), strings.NewReader(feedbackForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from feedback submit, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "claim@example.com")
+	registerForm.Set("password", "correct-password")
+	req = httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(anonCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var userID int64
+	if err := database.DB.QueryRow(`SELECT id FROM users WHERE email = 'claim@example.com'`).Scan(&userID); err != nil {
+		t.Fatalf("query claimed user failed: %v", err)
+	}
+
+	var examUserID sql.NullInt64
+	if err := database.DB.QueryRow(`SELECT user_id FROM exams WHERE id = ?`, examID).Scan(&examUserID); err != nil {
+		t.Fatalf("query claimed exam failed: %v", err)
+	}
+	if !examUserID.Valid || examUserID.Int64 != userID {
+		t.Fatalf("expected exam user_id %d, got %+v", userID, examUserID)
+	}
+
+	var feedbackUserID sql.NullInt64
+	if err := database.DB.QueryRow(`SELECT user_id FROM question_feedback WHERE exam_id = ?`, examID).Scan(&feedbackUserID); err != nil {
+		t.Fatalf("query claimed feedback failed: %v", err)
+	}
+	if !feedbackUserID.Valid || feedbackUserID.Int64 != userID {
+		t.Fatalf("expected feedback user_id %d, got %+v", userID, feedbackUserID)
+	}
+
+	var claimedUserID sql.NullInt64
+	if err := database.DB.QueryRow(`
+		SELECT a.claimed_user_id
+		FROM anonymous_sessions a
+		JOIN exams e ON e.anonymous_session_id = a.id
+		WHERE e.id = ?
+	`, examID).Scan(&claimedUserID); err != nil {
+		t.Fatalf("query claimed anonymous session failed: %v", err)
+	}
+	if !claimedUserID.Valid || claimedUserID.Int64 != userID {
+		t.Fatalf("expected anonymous session claimed_user_id %d, got %+v", userID, claimedUserID)
+	}
+}
+
+func TestLoginClaimsAnonymousExamHistory(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "login-claim@example.com")
+	registerForm.Set("password", "correct-password")
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var userID int64
+	if err := database.DB.QueryRow(`SELECT id FROM users WHERE email = 'login-claim@example.com'`).Scan(&userID); err != nil {
+		t.Fatalf("query user failed: %v", err)
+	}
+
+	examID, anonCookie := startExamWithCookie(t, router, 1, nil)
+	if anonCookie == nil {
+		t.Fatal("expected anonymous session cookie after starting exam")
+	}
+
+	loginForm := url.Values{}
+	loginForm.Set("email", "login-claim@example.com")
+	loginForm.Set("password", "correct-password")
+	req = httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(anonCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from login, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var examUserID sql.NullInt64
+	if err := database.DB.QueryRow(`SELECT user_id FROM exams WHERE id = ?`, examID).Scan(&examUserID); err != nil {
+		t.Fatalf("query claimed exam failed: %v", err)
+	}
+	if !examUserID.Valid || examUserID.Int64 != userID {
+		t.Fatalf("expected exam user_id %d, got %+v", userID, examUserID)
 	}
 }
 
@@ -814,11 +1074,12 @@ func TestQuestionFeedbackSubmissionAndAdminReview(t *testing.T) {
 	var feedbackID int
 	var status string
 	var comment string
+	var feedbackAnonymousSessionID sql.NullInt64
 	if err := database.DB.QueryRow(`
-		SELECT id, status, COALESCE(comment, '')
+		SELECT id, status, COALESCE(comment, ''), anonymous_session_id
 		FROM question_feedback
 		WHERE exam_id = ? AND question_id = ?
-	`, examID, firstQuestionID).Scan(&feedbackID, &status, &comment); err != nil {
+	`, examID, firstQuestionID).Scan(&feedbackID, &status, &comment, &feedbackAnonymousSessionID); err != nil {
 		t.Fatalf("query feedback row failed: %v", err)
 	}
 	if status != "open" {
@@ -826,6 +1087,17 @@ func TestQuestionFeedbackSubmissionAndAdminReview(t *testing.T) {
 	}
 	if !strings.Contains(comment, "answer key") {
 		t.Fatalf("unexpected feedback comment: %q", comment)
+	}
+	var examAnonymousSessionID int64
+	if err := database.DB.QueryRow(`
+		SELECT anonymous_session_id
+		FROM exams
+		WHERE id = ?
+	`, examID).Scan(&examAnonymousSessionID); err != nil {
+		t.Fatalf("query exam anonymous session failed: %v", err)
+	}
+	if !feedbackAnonymousSessionID.Valid || feedbackAnonymousSessionID.Int64 != examAnonymousSessionID {
+		t.Fatalf("expected feedback anonymous session %d, got %+v", examAnonymousSessionID, feedbackAnonymousSessionID)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin/feedback", nil)
@@ -922,6 +1194,7 @@ func setupHandlerTestEnv(t *testing.T) {
 	changeToRepoRoot(t)
 	t.Setenv(config.EnvAdminPassword, "admin-pass")
 	t.Setenv(config.EnvAdminSessionKey, "admin-session-secret")
+	t.Setenv(config.EnvUserSessionKey, "user-session-secret")
 
 	dbPath := filepath.Join(t.TempDir(), "handlers.db")
 	if err := database.InitDB(dbPath); err != nil {
@@ -962,6 +1235,17 @@ func newTestRouter() http.Handler {
 	return app.NewRouter(config.LoadServerConfig())
 }
 
+func userSessionCookieFromRecorder(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == "simsexam_user_session" {
+			return cookie
+		}
+	}
+	t.Fatal("expected user session cookie")
+	return nil
+}
+
 func adminSessionCookie(t *testing.T, router http.Handler) *http.Cookie {
 	t.Helper()
 
@@ -987,12 +1271,21 @@ func adminSessionCookie(t *testing.T, router http.Handler) *http.Cookie {
 
 func startExam(t *testing.T, router http.Handler, subjectID int) int {
 	t.Helper()
+	examID, _ := startExamWithCookie(t, router, subjectID, nil)
+	return examID
+}
+
+func startExamWithCookie(t *testing.T, router http.Handler, subjectID int, cookie *http.Cookie) (int, *http.Cookie) {
+	t.Helper()
 
 	form := url.Values{}
 	form.Set("subject_id", strconv.Itoa(subjectID))
 
 	req := httptest.NewRequest(http.MethodPost, "/exam/start", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -1007,7 +1300,12 @@ func startExam(t *testing.T, router http.Handler, subjectID int) int {
 		t.Fatalf("unexpected redirect location: %s", location)
 	}
 	examID, _ := strconv.Atoi(match[1])
-	return examID
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == "simsexam_anon_session" {
+			return examID, cookie
+		}
+	}
+	return examID, nil
 }
 
 func examQuestionCountForTest(t *testing.T, examID int) int {
