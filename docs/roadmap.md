@@ -97,6 +97,15 @@ Move from anonymous practice sessions toward durable user learning records.
 - build user-facing review pages for weak questions or repeated mistakes
 - prepare subject entitlement structure for future paid content
 
+Scope note:
+
+- Phase 3 needs minimum admin-facing user operations for role assignment and entitlement handling
+- Phase 3 does not require a full user-management console
+
+See [user-identity-learning-design.md](user-identity-learning-design.md) for the
+current Phase 3 design brainstorm around anonymous sessions, account linking,
+email verification, wrong-answer notebooks, and future entitlements.
+
 ### Why This Phase Matters
 
 The product becomes more valuable when it helps users improve over time, not only complete one exam session.

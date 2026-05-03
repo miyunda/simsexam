@@ -43,5 +43,7 @@ make version
 
 Official releases are controlled by Git tags such as `vX.Y.Z`. Current release assets use the `simsexam-${VERSION}-${OS}-${ARCH}.tar.gz` naming pattern and the official build target is currently `linux-amd64`. See [versioning-and-releases.md](/Users/yu/repos/simsexam/docs/versioning-and-releases.md:1).
 
+For the intended PR validation, staging, and release promotion flow, see [pr-testing-and-release-flow.md](/Users/yu/repos/simsexam/docs/pr-testing-and-release-flow.md:1).
+
 ## License
 [License Info]

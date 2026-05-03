@@ -128,6 +128,17 @@ Field notes:
 - `SIMSEXAM_ADMIN_SESSION_SECRET`
   - used to sign the admin session cookie; must be long and random in production
   - use a base64 or hex secret without spaces
+- `SIMSEXAM_USER_SESSION_SECRET`
+  - used to sign learner login session cookies; must be long, random, and distinct from the admin session secret
+  - use a base64 or hex secret without spaces
+- `SIMSEXAM_COOKIE_SECURE`
+  - set to `true` when the public site is served over HTTPS
+  - should normally be enabled in reverse-proxy production and staging deployments
+
+Header trust note:
+
+- client IP based controls such as login rate limiting assume the app is only reachable through the trusted reverse proxy path
+- keep `SIMSEXAM_ADDR` bound to loopback so external clients cannot bypass Caddy and send forged forwarding headers directly
 
 ## 4. systemd Unit Location
 

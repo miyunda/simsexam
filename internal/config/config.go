@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 const (
 	EnvAddr             = "SIMSEXAM_ADDR"
@@ -8,6 +11,8 @@ const (
 	EnvImportSourceType = "SIMSEXAM_IMPORT_SOURCE_TYPE"
 	EnvAdminPassword    = "SIMSEXAM_ADMIN_PASSWORD"
 	EnvAdminSessionKey  = "SIMSEXAM_ADMIN_SESSION_SECRET"
+	EnvUserSessionKey   = "SIMSEXAM_USER_SESSION_SECRET"
+	EnvCookieSecure     = "SIMSEXAM_COOKIE_SECURE"
 )
 
 const (
@@ -25,6 +30,8 @@ type ServerConfig struct {
 	Addr               string
 	AdminPassword      string
 	AdminSessionSecret string
+	UserSessionSecret  string
+	CookieSecure       bool
 }
 
 type ImportConfig struct {
@@ -38,6 +45,8 @@ func LoadServerConfig() ServerConfig {
 		Addr:               envOrDefault(EnvAddr, DefaultAddr),
 		AdminPassword:      os.Getenv(EnvAdminPassword),
 		AdminSessionSecret: os.Getenv(EnvAdminSessionKey),
+		UserSessionSecret:  os.Getenv(EnvUserSessionKey),
+		CookieSecure:       envBoolOrDefault(EnvCookieSecure, false),
 	}
 }
 
@@ -60,4 +69,16 @@ func envOrDefault(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func envBoolOrDefault(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }

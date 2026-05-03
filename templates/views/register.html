@@ -1,0 +1,39 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Account</p>
+            <h1>Create Account</h1>
+            <p class="subtitle">Use an email and password to keep learning records across sessions.</p>
+        </div>
+    </div>
+
+    <div class="question-card">
+        {{if .Error}}
+        <div class="review-item" style="border-left-color: var(--gold); margin-bottom: 20px;">
+            <strong>{{.Error}}</strong>
+        </div>
+        {{end}}
+        <form action="/register" method="POST">
+            <div style="display: grid; gap: 12px;">
+                <label for="email">Email</label>
+                <input id="email" name="email" type="email" value="{{.Email}}" autocomplete="email" required
+                    style="padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface); color: var(--text-primary);">
+
+                <label for="display_name">Display Name</label>
+                <input id="display_name" name="display_name" type="text" autocomplete="name"
+                    style="padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface); color: var(--text-primary);">
+
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" autocomplete="new-password" required
+                    style="padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface); color: var(--text-primary);">
+
+                <div>
+                    <button type="submit" class="btn-api primary">Create Account</button>
+                    <a href="/login" class="btn-api secondary">Sign In</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</section>
+{{end}}

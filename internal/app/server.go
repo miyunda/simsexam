@@ -57,9 +57,15 @@ func NewRouter(cfg config.ServerConfig) http.Handler {
 	r.Handle("/static/*", http.StripPrefix("/static", fileServer))
 
 	r.Get("/", handlers.Home)
+	r.Get("/register", handlers.RegisterForm(cfg))
+	r.Post("/register", handlers.RegisterSubmit(cfg))
+	r.Get("/login", handlers.LoginForm(cfg))
+	r.Post("/login", handlers.LoginSubmit(cfg))
+	r.Post("/logout", handlers.UserLogout(cfg))
+	r.Get("/me", handlers.AccountPage(cfg))
 	r.Get("/admin/login", handlers.AdminLoginForm(cfg))
 	r.Post("/admin/login", handlers.AdminLoginSubmit(cfg))
-	r.Post("/admin/logout", handlers.AdminLogout)
+	r.Post("/admin/logout", handlers.AdminLogout(cfg))
 
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(handlers.AdminAuthMiddleware(cfg))
@@ -83,7 +89,7 @@ func NewRouter(cfg config.ServerConfig) http.Handler {
 	})
 
 	r.Route("/exam", func(r chi.Router) {
-		r.Post("/start", handlers.StartExam)
+		r.Post("/start", handlers.StartExam(cfg))
 		r.Get("/{id}/question/{qIdx}", handlers.GetQuestion)
 		r.Post("/{id}/answer", handlers.SubmitAnswer)
 		r.Post("/{id}/feedback", handlers.SubmitQuestionFeedback)

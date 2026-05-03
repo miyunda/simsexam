@@ -1,0 +1,108 @@
+name: Deploy Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Full commit SHA for the artifact to deploy"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staging-deploy
+      cancel-in-progress: true
+    env:
+      COMMIT_SHA: ${{ inputs.commit_sha }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}
+      STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+      STAGING_SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+      STAGING_SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+      ARTIFACT_NAME: simsexam-commit-${{ inputs.commit_sha }}
+
+    steps:
+      - name: Resolve artifact ID
+        id: resolve-artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifactName = process.env.ARTIFACT_NAME;
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              },
+              (response) => response.data.artifacts
+            );
+            const match = artifacts.find((artifact) => artifact.name === artifactName && !artifact.expired);
+            if (!match) {
+              core.setFailed(`No non-expired artifact found for ${artifactName}`);
+              return;
+            }
+            core.setOutput("artifact_id", String(match.id));
+
+      - name: Download commit artifact via GitHub API
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.resolve-artifact.outputs.artifact_id }}
+        run: |
+          mkdir -p dist
+          curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            -o dist/artifact.zip
+          unzip -o dist/artifact.zip -d dist
+
+      - name: Prepare SSH
+        run: |
+          test -n "$STAGING_HOST"
+          test -n "$STAGING_SSH_PORT"
+          test -n "$STAGING_SSH_USER"
+          test -n "$STAGING_SSH_PRIVATE_KEY"
+          test -n "$STAGING_SSH_KNOWN_HOSTS"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$STAGING_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$STAGING_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload artifact to staging
+        env:
+          COMMIT: ${{ env.COMMIT_SHA }}
+        run: |
+          SHORT_COMMIT="${COMMIT::7}"
+          ARCHIVE="simsexam-commit-${SHORT_COMMIT}-linux-amd64.tar.gz"
+          test -f "dist/${ARCHIVE}"
+          scp -P "$STAGING_SSH_PORT" "dist/${ARCHIVE}" "${STAGING_SSH_USER}@${STAGING_HOST}:/tmp/${ARCHIVE}"
+
+      - name: Deploy on staging
+        env:
+          COMMIT: ${{ env.COMMIT_SHA }}
+        run: |
+          SHORT_COMMIT="${COMMIT::7}"
+          ARCHIVE="simsexam-commit-${SHORT_COMMIT}-linux-amd64.tar.gz"
+          BUNDLE_DIR="simsexam-commit-${SHORT_COMMIT}-linux-amd64"
+          RELEASE_DIR="/opt/simsexam/releases/staging/${SHORT_COMMIT}"
+          CURRENT_LINK="/opt/simsexam/current"
+          ssh -p "$STAGING_SSH_PORT" "${STAGING_SSH_USER}@${STAGING_HOST}" "
+            set -e
+            sudo mkdir -p '${RELEASE_DIR}'
+            sudo rm -rf '${RELEASE_DIR}/${BUNDLE_DIR}'
+            sudo tar -C '${RELEASE_DIR}' -xzf '/tmp/${ARCHIVE}'
+            sudo chown -R simsexam:simsexam '${RELEASE_DIR}'
+            sudo ln -sfn '${RELEASE_DIR}/${BUNDLE_DIR}' '${CURRENT_LINK}'
+            sudo -u simsexam '${CURRENT_LINK}/simsexam-migrate' -dsn /var/lib/simsexam/simsexam_v1.db
+            sudo systemctl restart simsexam
+            rm -f '/tmp/${ARCHIVE}'
+          "

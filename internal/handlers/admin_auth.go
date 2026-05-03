@@ -22,12 +22,21 @@ const adminSessionTTL = 24 * time.Hour
 const adminLoginMaxFailures = 5
 const adminLoginWindow = 10 * time.Minute
 const adminLoginBlockDuration = 10 * time.Minute
+const userLoginMaxFailures = 5
+const userLoginWindow = 10 * time.Minute
+const userLoginBlockDuration = 10 * time.Minute
 
 var defaultAdminLoginRateLimiter = newAdminLoginRateLimiter(
 	time.Now,
 	adminLoginMaxFailures,
 	adminLoginWindow,
 	adminLoginBlockDuration,
+)
+var defaultUserLoginRateLimiter = newAdminLoginRateLimiter(
+	time.Now,
+	userLoginMaxFailures,
+	userLoginWindow,
+	userLoginBlockDuration,
 )
 
 type adminLoginPageData struct {
@@ -108,31 +117,17 @@ func AdminLoginSubmit(cfg config.ServerConfig) http.HandlerFunc {
 			return
 		}
 
-		http.SetCookie(w, &http.Cookie{
-			Name:     adminSessionCookieName,
-			Value:    token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Expires:  time.Now().Add(adminSessionTTL),
-			MaxAge:   int(adminSessionTTL.Seconds()),
-		})
+		http.SetCookie(w, newSessionCookie(cfg, adminSessionCookieName, token, time.Now().Add(adminSessionTTL), int(adminSessionTTL.Seconds())))
 
 		http.Redirect(w, r, "/admin/subjects", http.StatusSeeOther)
 	}
 }
 
-func AdminLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     adminSessionCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Unix(0, 0),
-		MaxAge:   -1,
-	})
-	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+func AdminLogout(cfg config.ServerConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, expiredSessionCookie(cfg, adminSessionCookieName))
+		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+	}
 }
 
 func AdminAuthMiddleware(cfg config.ServerConfig) func(http.Handler) http.Handler {

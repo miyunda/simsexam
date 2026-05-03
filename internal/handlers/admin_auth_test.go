@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"simsexam/internal/config"
+	"simsexam/internal/database"
 )
 
 func TestClientIPFromRequestPrecedence(t *testing.T) {
@@ -125,6 +126,7 @@ func TestAdminLoginSubmitSuccessClearsFailureState(t *testing.T) {
 		Addr:               config.DefaultAddr,
 		AdminPassword:      "admin-pass",
 		AdminSessionSecret: "admin-session-secret",
+		CookieSecure:       true,
 	}
 
 	current := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
@@ -149,10 +151,78 @@ func TestAdminLoginSubmitSuccessClearsFailureState(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected 303 on successful login, got %d", rec.Code)
 	}
+	foundAdminCookie := false
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == adminSessionCookieName {
+			foundAdminCookie = true
+			if !cookie.Secure {
+				t.Fatal("expected admin session cookie to be secure when configured")
+			}
+		}
+	}
+	if !foundAdminCookie {
+		t.Fatal("expected admin session cookie")
+	}
 
 	allowed, blockedUntil := defaultAdminLoginRateLimiter.Allow("198.51.100.60")
 	if !allowed {
 		t.Fatalf("expected limiter state to clear after successful login, blocked until %v", blockedUntil)
+	}
+}
+
+func TestUserLoginRateLimiterBlocksAfterRepeatedFailures(t *testing.T) {
+	changeToRepoRootForAdminAuthTest(t)
+
+	dbPath := filepath.Join(t.TempDir(), "user-auth.db")
+	if err := database.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	t.Cleanup(func() {
+		if database.DB != nil {
+			_ = database.DB.Close()
+			database.DB = nil
+		}
+	})
+
+	cfg := config.ServerConfig{
+		Addr:              config.DefaultAddr,
+		UserSessionSecret: "user-session-secret",
+	}
+
+	current := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
+	oldLimiter := defaultUserLoginRateLimiter
+	defaultUserLoginRateLimiter = newAdminLoginRateLimiter(func() time.Time { return current }, 5, 10*time.Minute, 10*time.Minute)
+	defer func() {
+		defaultUserLoginRateLimiter = oldLimiter
+	}()
+
+	handler := LoginSubmit(cfg)
+	for i := 0; i < 5; i++ {
+		form := url.Values{}
+		form.Set("email", "missing@example.com")
+		form.Set("password", "wrong-pass")
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("CF-Connecting-IP", "198.51.100.70")
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i+1, rec.Code)
+		}
+	}
+
+	form := url.Values{}
+	form.Set("email", "missing@example.com")
+	form.Set("password", "wrong-pass")
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("CF-Connecting-IP", "198.51.100.70")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after threshold is reached, got %d", rec.Code)
 	}
 }
 

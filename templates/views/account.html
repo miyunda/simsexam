@@ -1,0 +1,27 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Account</p>
+            <h1>{{.DisplayName}}</h1>
+            <p class="subtitle">{{.Email}}</p>
+        </div>
+    </div>
+
+    <div class="question-card">
+        <dl style="display: grid; gap: 12px; margin: 0 0 24px;">
+            <div>
+                <dt class="table-subtext">Role</dt>
+                <dd style="margin: 4px 0 0;">{{.Role}}</dd>
+            </div>
+            <div>
+                <dt class="table-subtext">Created</dt>
+                <dd style="margin: 4px 0 0;">{{.CreatedAt}}</dd>
+            </div>
+        </dl>
+        <form action="/logout" method="POST">
+            <button type="submit" class="btn-api secondary">Sign Out</button>
+        </form>
+    </div>
+</section>
+{{end}}

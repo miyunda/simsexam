@@ -91,3 +91,12 @@ Examples:
 
 - `v0.1.0`: first formal release
 - `v0.1.1`: same release line, but improved packaging or deployment tooling
+
+## Testing Flow Reference
+
+The release process assumes the candidate commit has already passed internal and
+staging validation before it is tagged.
+
+See:
+
+- [pr-testing-and-release-flow.md](/Users/yu/repos/simsexam/docs/pr-testing-and-release-flow.md:1)
