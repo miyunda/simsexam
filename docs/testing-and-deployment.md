@@ -70,10 +70,11 @@ Current GitHub Actions responsibilities:
 - run `make test`
 - run `make build`
 - publish CI artifacts and tagged release assets
+- allow manual staging deployment of a selected commit artifact
 
 Current GitHub Actions does not do:
 
-- deploy to servers automatically
+- deploy to production automatically
 - replace running production processes
 - execute production database operations automatically
 
@@ -88,12 +89,20 @@ Recommended stack:
 
 Typical deployment steps:
 
-1. obtain the target release artifact
+1. obtain the target artifact
 2. install binaries on the server
 3. run `simsexam-migrate` or `simsexam-bootstrapv1`
 4. import additional content if needed
 5. restart the `systemd` service
 6. run a smoke test
+
+For staging commit deployments, the current GitHub Actions path is:
+
+1. let `ci.yml` build and upload the commit artifact for the target SHA
+2. complete internal testing for that artifact
+3. manually run `Deploy Staging`
+4. provide the full Git commit SHA as `commit_sha`
+5. let the workflow download and deploy the matching commit artifact
 
 For the standard single-host directory layout and systemd flow, see:
 
@@ -153,6 +162,11 @@ Trusted proxy assumption:
 - public traffic must reach the app only through the trusted reverse-proxy chain
 - do not expose the Go application process directly to the public Internet while relying on forwarded client IP headers
 
+Staging workflow environment assumption:
+
+- `Deploy Staging` currently reads its SSH secrets from the GitHub Actions environment named `Staging`
+- if those values are stored as environment secrets, the workflow job must remain bound to `environment: Staging`
+
 ## 9. Future Evolution Order
 
 If deployment complexity grows later, use this order:
@@ -178,7 +192,8 @@ Current working policy:
 4. Direct pushes to `main` are not allowed.
 5. Pull requests must pass `make test` and `make build`.
 6. GitHub Actions currently handles CI and release packaging, not production deployment.
-7. Deployment remains manual, auditable, and rollback-friendly.
+7. GitHub Actions can manually deploy a selected commit artifact to staging.
+8. Deployment remains auditable and rollback-friendly.
 
 For the intended branch-to-staging-to-release flow, see:
 

@@ -13,6 +13,7 @@ Current target:
 Assumptions:
 
 - You download `simsexam-<version>-<os>-<arch>.tar.gz` from GitHub Releases
+- For staging, GitHub Actions may instead deploy `simsexam-commit-<shortsha>-linux-amd64.tar.gz`
 - The archive expands into a self-contained application bundle directory
 - The bundle contains:
   - `simsexam`
@@ -310,3 +311,23 @@ That means:
 - `simsexam` is not directly exposed on a public interface
 - TLS termination belongs in the reverse proxy layer
 - if the system later moves to multi-instance deployment, the ingress design should be revisited then
+
+## 11. Staging Deployment Notes
+
+Current validated staging deployment behavior:
+
+- `Deploy Staging` is triggered manually from GitHub Actions
+- the workflow input is the full Git commit SHA
+- the workflow downloads the matching `ci.yml` commit artifact and deploys it to the staging server
+- the workflow currently uses the GitHub Actions environment named `Staging`
+
+Current expected staging bundle naming:
+
+- uploaded artifact bundle: `simsexam-commit-<shortsha>-linux-amd64.tar.gz`
+- extracted bundle directory: `simsexam-commit-<shortsha>-linux-amd64`
+- staging release directory: `/opt/simsexam/releases/staging/<shortsha>/`
+
+Current expected staging UI version semantics:
+
+- staging footer version strings such as `ci-fd98e6b` are expected
+- they indicate a commit artifact deployment rather than a tagged release deployment

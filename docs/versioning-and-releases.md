@@ -78,8 +78,14 @@ The release naming scheme already reserves `OS` and `ARCH` in package names so f
 ## CI Artifacts vs Releases
 
 - `CI` artifacts are for branch and pull-request validation
+- `CI` artifacts are also the source for manual staging deployments
 - `Release` assets are for formal versioned distribution
 - Only Git tags matching the release format, such as `vX.Y.Z`, should produce official downloadable release binaries
+
+Current display expectation:
+
+- a staging deployment from a commit artifact may show a version string such as `ci-fd98e6b`
+- this is expected and does not indicate a formal release tag
 
 ## Tag Discipline
 

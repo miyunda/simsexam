@@ -45,5 +45,7 @@ Official releases are controlled by Git tags such as `vX.Y.Z`. Current release a
 
 For the intended PR validation, staging, and release promotion flow, see [pr-testing-and-release-flow.md](/Users/yu/repos/simsexam/docs/pr-testing-and-release-flow.md:1).
 
+For current deployment policy, including manual `Deploy Staging` usage and staging environment requirements, see [testing-and-deployment.md](/Users/yu/repos/simsexam/docs/testing-and-deployment.md:1).
+
 ## License
 [License Info]
