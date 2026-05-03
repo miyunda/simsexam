@@ -98,6 +98,7 @@ Typical deployment steps:
 For the standard single-host directory layout and systemd flow, see:
 
 - [linux-deployment-layout.md](/Users/yu/repos/simsexam/docs/linux-deployment-layout.md:1)
+- [pr-testing-and-release-flow.md](/Users/yu/repos/simsexam/docs/pr-testing-and-release-flow.md:1)
 
 ## 6. Manual Pre-Deployment Checks
 
@@ -169,3 +170,7 @@ Current working policy:
 5. Pull requests must pass `make test` and `make build`.
 6. GitHub Actions currently handles CI and release packaging, not production deployment.
 7. Deployment remains manual, auditable, and rollback-friendly.
+
+For the intended branch-to-staging-to-release flow, see:
+
+- [pr-testing-and-release-flow.md](/Users/yu/repos/simsexam/docs/pr-testing-and-release-flow.md:1)
