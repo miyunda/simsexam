@@ -34,16 +34,19 @@ jobs:
         with:
           script: |
             const artifactName = process.env.ARTIFACT_NAME;
-            const artifacts = await github.paginate(
+            const allArtifacts = [];
+            for await (const response of github.paginate.iterator(
               github.rest.actions.listArtifactsForRepo,
               {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 per_page: 100,
-              },
-              (response) => response.data.artifacts
-            );
-            const match = artifacts.find((artifact) => artifact.name === artifactName && !artifact.expired);
+              }
+            )) {
+              const pageArtifacts = response.data.artifacts || [];
+              allArtifacts.push(...pageArtifacts);
+            }
+            const match = allArtifacts.find((artifact) => artifact && artifact.name === artifactName && !artifact.expired);
             if (!match) {
               core.setFailed(`No non-expired artifact found for ${artifactName}`);
               return;
