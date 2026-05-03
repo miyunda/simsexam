@@ -32,18 +32,32 @@ jobs:
           SHORT_COMMIT="${COMMIT::7}"
           BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           make build VERSION="ci-${SHORT_COMMIT}" COMMIT="$SHORT_COMMIT" BUILD_TIME="$BUILD_TIME"
+          go build -o bin/simsexam-migrate ./cmd/migrate
+          go build -o bin/simsexam-bootstrapv1 ./cmd/bootstrapv1
 
-      - name: Prepare artifact
+      - name: Package commit artifact
         env:
           COMMIT: ${{ github.sha }}
         run: |
           SHORT_COMMIT="${COMMIT::7}"
           mkdir -p dist
-          cp bin/simsexam "dist/simsexam-ci-${SHORT_COMMIT}-linux-amd64"
+          PACKAGE_ROOT="dist/simsexam-commit-${SHORT_COMMIT}-linux-amd64"
+          mkdir -p "$PACKAGE_ROOT"
+          cp bin/simsexam "$PACKAGE_ROOT/simsexam"
+          cp bin/simsexam-migrate "$PACKAGE_ROOT/simsexam-migrate"
+          cp bin/simsexam-bootstrapv1 "$PACKAGE_ROOT/simsexam-bootstrapv1"
+          cp deploy/systemd/simsexam.service "$PACKAGE_ROOT/simsexam.service.template"
+          cp deploy/config/simsexam.env.example "$PACKAGE_ROOT/simsexam.env.example"
+          cp -R templates "$PACKAGE_ROOT/templates"
+          cp -R static "$PACKAGE_ROOT/static"
+          tar -C dist -czf "dist/simsexam-commit-${SHORT_COMMIT}-linux-amd64.tar.gz" "simsexam-commit-${SHORT_COMMIT}-linux-amd64"
+          sha256sum "dist/simsexam-commit-${SHORT_COMMIT}-linux-amd64.tar.gz" > "dist/simsexam-commit-${SHORT_COMMIT}-SHA256SUMS.txt"
 
-      - name: Upload binary artifact
+      - name: Upload commit artifact
         uses: actions/upload-artifact@v4
         with:
-          name: simsexam-ci-${{ github.sha }}
-          path: dist/simsexam-ci-*-linux-amd64
+          name: simsexam-commit-${{ github.sha }}
+          path: |
+            dist/simsexam-commit-*-linux-amd64.tar.gz
+            dist/simsexam-commit-*-SHA256SUMS.txt
           if-no-files-found: error
