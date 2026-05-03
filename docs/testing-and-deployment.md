@@ -135,6 +135,7 @@ Current runtime configuration entry points:
 - `SIMSEXAM_ADMIN_PASSWORD`
 - `SIMSEXAM_ADMIN_SESSION_SECRET`
 - `SIMSEXAM_USER_SESSION_SECRET`
+- `SIMSEXAM_COOKIE_SECURE`
 
 These are loaded centrally through `internal/config`. Runtime database settings are shared by `server`, `migrate`, `bootstrapv1`, and `importer`; admin access and learner login settings are used by `server`.
 
@@ -143,6 +144,14 @@ Operational recommendation:
 - avoid spaces in `SIMSEXAM_ADMIN_PASSWORD`
 - use a long random base64 or hex value without spaces for `SIMSEXAM_ADMIN_SESSION_SECRET`
 - use a separate long random base64 or hex value without spaces for `SIMSEXAM_USER_SESSION_SECRET`
+- set `SIMSEXAM_COOKIE_SECURE=true` when the public site is served over HTTPS through the reverse proxy
+
+Trusted proxy assumption:
+
+- login rate limiting uses the best available client IP from trusted proxy headers
+- the application must remain bound to loopback or another non-public interface
+- public traffic must reach the app only through the trusted reverse-proxy chain
+- do not expose the Go application process directly to the public Internet while relying on forwarded client IP headers
 
 ## 9. Future Evolution Order
 

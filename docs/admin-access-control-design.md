@@ -175,6 +175,24 @@ At that point:
 - `SIMSEXAM_ADMIN_PASSWORD` can be deprecated
 - the admin session can become part of the normal authenticated user session
 
+## First Admin Bootstrap In Phase B
+
+When the system first moves to role-based admin access, the first admin account
+still needs a trusted bootstrap path.
+
+Recommended rule:
+
+- keep the shared admin password available during the transition
+- let the target user register normally
+- promote the first admin account through a trusted operator action outside the
+  public application flow
+
+The simplest acceptable first mechanism is a direct database update performed
+by an operator on the server.
+
+This is preferable to automatic elevation rules because it avoids creating a
+long-lived privilege-escalation path just to solve the first-admin problem.
+
 ## Migration Strategy
 
 Phase A should be implemented in a way that makes Phase B straightforward.

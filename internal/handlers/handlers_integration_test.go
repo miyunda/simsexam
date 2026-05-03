@@ -329,6 +329,35 @@ func TestExamStartPersistsAnonymousSession(t *testing.T) {
 	}
 }
 
+func TestSecureCookieConfigurationAppliesToUserAndAnonymousSessions(t *testing.T) {
+	setupHandlerTestEnv(t)
+	t.Setenv(config.EnvCookieSecure, "true")
+	router := newTestRouter()
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "secure@example.com")
+	registerForm.Set("password", "correct-password")
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	userCookie := userSessionCookieFromRecorder(t, rec)
+	if !userCookie.Secure {
+		t.Fatal("expected user session cookie to be secure when configured")
+	}
+
+	_, anonCookie := startExamWithCookie(t, router, 1, nil)
+	if anonCookie == nil {
+		t.Fatal("expected anonymous session cookie after starting exam")
+	}
+	if !anonCookie.Secure {
+		t.Fatal("expected anonymous session cookie to be secure when configured")
+	}
+}
+
 func TestRegisterClaimsAnonymousExamAndFeedbackHistory(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()

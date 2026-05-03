@@ -224,6 +224,58 @@ Recommended transition:
 4. verify role-based admin access in deployment
 5. retire or disable the shared admin password model
 
+## First Admin Bootstrap
+
+The first `users.role = admin` account should not appear through automatic
+application logic.
+
+Recommended bootstrap rule:
+
+- the user registers through the normal login flow
+- a trusted operator promotes that account through a direct server-side action
+- the simplest acceptable first implementation is a direct database update
+
+Example operator action:
+
+```sql
+UPDATE users
+SET role = 'admin'
+WHERE email = 'admin@example.com';
+```
+
+This keeps the bootstrap path explicit and auditable while role-based admin
+access is still being introduced.
+
+Not recommended:
+
+- automatically promoting the first registered user
+- promoting users based on email pattern alone
+- hidden bootstrap routes or one-time public URLs
+- any self-service elevation path before the admin model is proven
+
+## Minimal Admin User Operations
+
+The near-term requirement is not a full user-management console.
+
+What is needed sooner is a narrow set of administrator operations directly tied
+to authorization and supportable rollout:
+
+- identify which users have `role = admin`
+- grant or remove admin access in a controlled way
+- inspect enough user identity information to apply role or entitlement changes safely
+- later, grant or revoke subject entitlements manually
+
+This is intentionally smaller than a general-purpose admin user management
+system.
+
+Not a first-pass requirement:
+
+- a full user list and search console
+- broad profile editing
+- account merge tooling
+- general support operations unrelated to auth, entitlement, or rollout safety
+- password reset back-office tools before the email and account recovery model is clearer
+
 ## Entitlements
 
 Paid content should not be implemented in the first identity pass, but the data
@@ -256,6 +308,7 @@ Payment integration can come later after the authorization model is proven.
 4. `d/admin-role-auth`
    - allow `users.role = admin` into admin routes
    - keep shared admin password as fallback during transition
+   - add only the minimum admin-facing user operations needed for role assignment
 
 5. `d/mistake-notebook`
    - populate `user_question_stats`

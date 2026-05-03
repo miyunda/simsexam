@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -118,7 +119,7 @@ func RegisterSubmit(cfg config.ServerConfig) http.HandlerFunc {
 			return
 		}
 
-		setUserSessionCookie(w, int(userID), cfg.UserSessionSecret)
+		setUserSessionCookie(w, cfg, int(userID), cfg.UserSessionSecret)
 		http.Redirect(w, r, "/me", http.StatusSeeOther)
 	}
 }
@@ -145,6 +146,15 @@ func LoginSubmit(cfg config.ServerConfig) http.HandlerFunc {
 			})
 			return
 		}
+		clientIP := clientIPFromRequest(r)
+		if allowed, blockedUntil := defaultUserLoginRateLimiter.Allow(clientIP); !allowed {
+			log.Printf("user login blocked client_ip=%q blocked_until=%q", clientIP, blockedUntil.Format(time.RFC3339))
+			w.WriteHeader(http.StatusTooManyRequests)
+			renderTemplate(w, "login.html", userAuthPageData{
+				Error: "Too many failed login attempts. Please try again later.",
+			})
+			return
+		}
 		if err := r.ParseForm(); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			renderTemplate(w, "login.html", userAuthPageData{Error: "Failed to parse login form."})
@@ -164,10 +174,13 @@ func LoginSubmit(cfg config.ServerConfig) http.HandlerFunc {
 			WHERE email = ?
 		`, email).Scan(&userID, &passwordHash, &status)
 		if err != nil || status != "active" || !passwordHash.Valid || !verifyPassword(password, passwordHash.String) {
+			_, blockedUntil := defaultUserLoginRateLimiter.RegisterFailure(clientIP)
+			log.Printf("user login invalid_password client_ip=%q email=%q blocked_until=%q", clientIP, email, blockedUntil.Format(time.RFC3339))
 			w.WriteHeader(http.StatusUnauthorized)
 			renderTemplate(w, "login.html", userAuthPageData{Error: "Invalid email or password.", Email: email})
 			return
 		}
+		defaultUserLoginRateLimiter.Clear(clientIP)
 
 		tx, err := database.DB.Begin()
 		if err != nil {
@@ -184,22 +197,16 @@ func LoginSubmit(cfg config.ServerConfig) http.HandlerFunc {
 			return
 		}
 
-		setUserSessionCookie(w, userID, cfg.UserSessionSecret)
+		setUserSessionCookie(w, cfg, userID, cfg.UserSessionSecret)
 		http.Redirect(w, r, "/me", http.StatusSeeOther)
 	}
 }
 
-func UserLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     userSessionCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Unix(0, 0),
-		MaxAge:   -1,
-	})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+func UserLogout(cfg config.ServerConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, expiredSessionCookie(cfg, userSessionCookieName))
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}
 }
 
 func AccountPage(cfg config.ServerConfig) http.HandlerFunc {
@@ -250,20 +257,12 @@ func displayNameFromEmail(email string) string {
 	return local
 }
 
-func setUserSessionCookie(w http.ResponseWriter, userID int, secret string) {
+func setUserSessionCookie(w http.ResponseWriter, cfg config.ServerConfig, userID int, secret string) {
 	token, err := signUserSession(userID, time.Now().Add(userSessionTTL), secret)
 	if err != nil {
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     userSessionCookieName,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(userSessionTTL),
-		MaxAge:   int(userSessionTTL.Seconds()),
-	})
+	http.SetCookie(w, newSessionCookie(cfg, userSessionCookieName, token, time.Now().Add(userSessionTTL), int(userSessionTTL.Seconds())))
 }
 
 func currentUserID(r *http.Request, cfg config.ServerConfig) (int, bool) {

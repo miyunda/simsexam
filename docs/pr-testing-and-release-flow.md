@@ -155,7 +155,33 @@ This workflow provides:
 - better separation between SHA-based testing and tag-based production release
 - more credible auditability for what actually reached production
 
-## 10. Relationship To Other Docs
+## 10. Release Readiness
+
+A PR passing CI and staging does not automatically mean it should become a
+formal release.
+
+A formal tag should be created only when the candidate change set forms a
+coherent, supportable release slice.
+
+Practical release readiness criteria:
+
+- the version solves a clearly defined problem or delivers one coherent user-facing capability
+- the main user or operator path is closed rather than partially implemented
+- configuration, migration, smoke testing, and rollback expectations are clear
+- the artifact and documentation semantics are consistent across PR testing, staging, and production
+- the team is willing to keep that tag in the long-term release history as a real version
+
+Current guidance for `simsexam`:
+
+- infrastructure-only progress can stay in Draft PRs and staging without forcing a release tag
+- a new tag is more appropriate once a user-visible workflow is meaningfully closed
+
+Example for the current Phase 3 direction:
+
+- anonymous sessions alone are not a strong release boundary
+- login plus history claim plus learner review or mistake workflows would be a stronger release candidate
+
+## 11. Relationship To Other Docs
 
 This document defines environment flow and artifact semantics.
 

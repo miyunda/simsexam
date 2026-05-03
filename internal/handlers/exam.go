@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"simsexam/internal/config"
 	"simsexam/internal/database"
 	"simsexam/internal/models"
 
@@ -28,107 +29,109 @@ func cleanQuestionText(text string) string {
 	return questionNumRegex.ReplaceAllString(text, "")
 }
 
-func StartExam(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Parse form error", http.StatusBadRequest)
-		return
-	}
+func StartExam(cfg config.ServerConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Parse form error", http.StatusBadRequest)
+			return
+		}
 
-	subjectID, _ := strconv.Atoi(r.FormValue("subject_id"))
-	if subjectID == 0 {
-		http.Error(w, "Invalid subject", http.StatusBadRequest)
-		return
-	}
+		subjectID, _ := strconv.Atoi(r.FormValue("subject_id"))
+		if subjectID == 0 {
+			http.Error(w, "Invalid subject", http.StatusBadRequest)
+			return
+		}
 
-	tx, err := database.DB.Begin()
-	if err != nil {
-		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
-		return
-	}
-	defer tx.Rollback()
+		tx, err := database.DB.Begin()
+		if err != nil {
+			http.Error(w, "Failed to start exam", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
 
-	anonymousSessionID, anonymousCookie, err := ensureAnonymousSessionTx(r, tx)
-	if err != nil {
-		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
-		return
-	}
+		anonymousSessionID, anonymousCookie, err := ensureAnonymousSessionTx(r, tx, cfg)
+		if err != nil {
+			http.Error(w, "Failed to start exam", http.StatusInternalServerError)
+			return
+		}
 
-	var questionSetID int
-	var questionCount int
-	err = tx.QueryRow(`
+		var questionSetID int
+		var questionCount int
+		err = tx.QueryRow(`
 		SELECT current_question_set_id, question_count
 		FROM subjects
 		WHERE id = ? AND status = 'published' AND current_question_set_id IS NOT NULL
 	`, subjectID).Scan(&questionSetID, &questionCount)
-	if err != nil {
-		http.Error(w, "Subject not available", http.StatusNotFound)
-		return
-	}
+		if err != nil {
+			http.Error(w, "Subject not available", http.StatusNotFound)
+			return
+		}
 
-	res, err := tx.Exec(`
+		res, err := tx.Exec(`
 		INSERT INTO exams (subject_id, question_set_id, anonymous_session_id, mode, status)
 		VALUES (?, ?, ?, 'practice', 'in_progress')
 	`, subjectID, questionSetID, anonymousSessionID)
-	if err != nil {
-		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
-		return
-	}
-	examID, _ := res.LastInsertId()
+		if err != nil {
+			http.Error(w, "Failed to start exam", http.StatusInternalServerError)
+			return
+		}
+		examID, _ := res.LastInsertId()
 
-	rows, err := tx.Query(`
+		rows, err := tx.Query(`
 		SELECT id
 		FROM questions
 		WHERE subject_id = ? AND question_set_id = ? AND status = 'active'
 		ORDER BY RANDOM()
 		LIMIT ?
 	`, subjectID, questionSetID, questionCount)
-	if err != nil {
-		http.Error(w, "Failed to load questions", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var questionIDs []int
-	for rows.Next() {
-		var questionID int
-		if err := rows.Scan(&questionID); err != nil {
+		if err != nil {
 			http.Error(w, "Failed to load questions", http.StatusInternalServerError)
 			return
 		}
-		questionIDs = append(questionIDs, questionID)
-	}
-	if len(questionIDs) == 0 {
-		http.Error(w, "No active questions available for this subject", http.StatusBadRequest)
-		return
-	}
+		defer rows.Close()
 
-	for idx, questionID := range questionIDs {
-		res, err := tx.Exec(`
+		var questionIDs []int
+		for rows.Next() {
+			var questionID int
+			if err := rows.Scan(&questionID); err != nil {
+				http.Error(w, "Failed to load questions", http.StatusInternalServerError)
+				return
+			}
+			questionIDs = append(questionIDs, questionID)
+		}
+		if len(questionIDs) == 0 {
+			http.Error(w, "No active questions available for this subject", http.StatusBadRequest)
+			return
+		}
+
+		for idx, questionID := range questionIDs {
+			res, err := tx.Exec(`
 			INSERT INTO exam_questions (exam_id, question_id, position)
 			VALUES (?, ?, ?)
 		`, examID, questionID, idx+1)
-		if err != nil {
-			http.Error(w, "Failed to persist exam questions", http.StatusInternalServerError)
-			return
+			if err != nil {
+				http.Error(w, "Failed to persist exam questions", http.StatusInternalServerError)
+				return
+			}
+			examQuestionID, err := res.LastInsertId()
+			if err != nil {
+				http.Error(w, "Failed to persist exam questions", http.StatusInternalServerError)
+				return
+			}
+			if err := persistExamQuestionOptionOrder(tx, examQuestionID, questionID); err != nil {
+				http.Error(w, "Failed to persist exam question option order", http.StatusInternalServerError)
+				return
+			}
 		}
-		examQuestionID, err := res.LastInsertId()
-		if err != nil {
-			http.Error(w, "Failed to persist exam questions", http.StatusInternalServerError)
-			return
-		}
-		if err := persistExamQuestionOptionOrder(tx, examQuestionID, questionID); err != nil {
-			http.Error(w, "Failed to persist exam question option order", http.StatusInternalServerError)
-			return
-		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		http.Error(w, "Failed to start exam", http.StatusInternalServerError)
-		return
-	}
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to start exam", http.StatusInternalServerError)
+			return
+		}
 
-	http.SetCookie(w, anonymousCookie)
-	http.Redirect(w, r, fmt.Sprintf("/exam/%d/question/1", examID), http.StatusSeeOther)
+		http.SetCookie(w, anonymousCookie)
+		http.Redirect(w, r, fmt.Sprintf("/exam/%d/question/1", examID), http.StatusSeeOther)
+	}
 }
 
 func GetQuestion(w http.ResponseWriter, r *http.Request) {

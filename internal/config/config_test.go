@@ -7,6 +7,7 @@ func TestLoadServerConfigDefaults(t *testing.T) {
 	t.Setenv(EnvDBPath, "")
 	t.Setenv(EnvAdminPassword, "")
 	t.Setenv(EnvAdminSessionKey, "")
+	t.Setenv(EnvCookieSecure, "")
 
 	cfg := LoadServerConfig()
 	if cfg.Addr != DefaultAddr {
@@ -21,6 +22,9 @@ func TestLoadServerConfigDefaults(t *testing.T) {
 	if cfg.AdminSessionSecret != "" {
 		t.Fatalf("expected empty admin session secret by default, got %q", cfg.AdminSessionSecret)
 	}
+	if cfg.CookieSecure {
+		t.Fatal("expected cookie secure to default false")
+	}
 }
 
 func TestLoadServerConfigFromEnv(t *testing.T) {
@@ -28,6 +32,7 @@ func TestLoadServerConfigFromEnv(t *testing.T) {
 	t.Setenv(EnvDBPath, "/tmp/se.db")
 	t.Setenv(EnvAdminPassword, "admin-pass")
 	t.Setenv(EnvAdminSessionKey, "session-secret")
+	t.Setenv(EnvCookieSecure, "true")
 
 	cfg := LoadServerConfig()
 	if cfg.Addr != "127.0.0.1:7000" {
@@ -41,6 +46,9 @@ func TestLoadServerConfigFromEnv(t *testing.T) {
 	}
 	if cfg.AdminSessionSecret != "session-secret" {
 		t.Fatalf("expected env admin session secret, got %q", cfg.AdminSessionSecret)
+	}
+	if !cfg.CookieSecure {
+		t.Fatal("expected cookie secure true from env")
 	}
 }
 

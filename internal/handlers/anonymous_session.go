@@ -9,17 +9,19 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"simsexam/internal/config"
 )
 
 const anonymousSessionCookieName = "simsexam_anon_session"
 
-func ensureAnonymousSessionTx(r *http.Request, tx *sql.Tx) (int, *http.Cookie, error) {
+func ensureAnonymousSessionTx(r *http.Request, tx *sql.Tx, cfg config.ServerConfig) (int, *http.Cookie, error) {
 	if cookie, err := r.Cookie(anonymousSessionCookieName); err == nil {
 		token := strings.TrimSpace(cookie.Value)
 		if token != "" {
 			sessionID, err := anonymousSessionIDByToken(tx, token)
 			if err == nil {
-				return sessionID, refreshAnonymousSessionCookie(token), nil
+				return sessionID, refreshAnonymousSessionCookie(cfg, token), nil
 			}
 			if err != sql.ErrNoRows {
 				return 0, nil, err
@@ -42,7 +44,7 @@ func ensureAnonymousSessionTx(r *http.Request, tx *sql.Tx) (int, *http.Cookie, e
 	if err != nil {
 		return 0, nil, err
 	}
-	return int(sessionID), refreshAnonymousSessionCookie(token), nil
+	return int(sessionID), refreshAnonymousSessionCookie(cfg, token), nil
 }
 
 func anonymousSessionIDByToken(tx *sql.Tx, token string) (int, error) {
@@ -78,13 +80,12 @@ func anonymousSessionTokenHash(token string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-func refreshAnonymousSessionCookie(token string) *http.Cookie {
-	return &http.Cookie{
-		Name:     anonymousSessionCookieName,
-		Value:    token,
-		Path:     "/",
-		MaxAge:   int((180 * 24 * time.Hour).Seconds()),
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	}
+func refreshAnonymousSessionCookie(cfg config.ServerConfig, token string) *http.Cookie {
+	return newSessionCookie(
+		cfg,
+		anonymousSessionCookieName,
+		token,
+		time.Now().Add(180*24*time.Hour),
+		int((180 * 24 * time.Hour).Seconds()),
+	)
 }
