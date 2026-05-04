@@ -1,0 +1,51 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Learning</p>
+            <h1>Wrong-Answer Notebook</h1>
+            <p class="subtitle">Review questions you have missed before.</p>
+        </div>
+        <a href="/me" class="btn-api secondary">Account</a>
+    </div>
+
+    {{if .Mistakes}}
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Subject</th>
+                    <th>Question</th>
+                    <th>Wrong</th>
+                    <th>Correct</th>
+                    <th>Status</th>
+                    <th>Last Wrong</th>
+                    <th>Review</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Mistakes}}
+                <tr>
+                    <td>{{.SubjectTitle}}</td>
+                    <td>
+                        <strong>{{.QuestionKey}}</strong>
+                        <div class="table-subtext">{{.QuestionSummary}}</div>
+                    </td>
+                    <td>{{.WrongCount}}</td>
+                    <td>{{.CorrectCount}}</td>
+                    <td><span class="pill">{{.MasteryStatus}}</span></td>
+                    <td>{{.LastWrongAt}}</td>
+                    <td><a href="/me/mistakes/{{.SubjectID}}/{{.QuestionKey}}">Open</a></td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{else}}
+    <div class="alert-card alert-success">
+        <strong>No wrong answers yet</strong>
+        <p class="table-subtext">After you miss questions while signed in, they will appear here for review.</p>
+    </div>
+    {{end}}
+</section>
+{{end}}

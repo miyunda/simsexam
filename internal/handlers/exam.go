@@ -67,10 +67,15 @@ func StartExam(cfg config.ServerConfig) http.HandlerFunc {
 			return
 		}
 
+		var userID any
+		if currentUserID, ok := currentUserID(r, cfg); ok {
+			userID = currentUserID
+		}
+
 		res, err := tx.Exec(`
-		INSERT INTO exams (subject_id, question_set_id, anonymous_session_id, mode, status)
-		VALUES (?, ?, ?, 'practice', 'in_progress')
-	`, subjectID, questionSetID, anonymousSessionID)
+		INSERT INTO exams (user_id, subject_id, question_set_id, anonymous_session_id, mode, status)
+		VALUES (?, ?, ?, ?, 'practice', 'in_progress')
+	`, userID, subjectID, questionSetID, anonymousSessionID)
 		if err != nil {
 			http.Error(w, "Failed to start exam", http.StatusInternalServerError)
 			return
@@ -253,6 +258,18 @@ func SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 	if err := upsertExamAnswer(tx, examID, questionID, selected, isCorrect); err != nil {
 		http.Error(w, "Failed to save answer", http.StatusInternalServerError)
 		return
+	}
+
+	userID, err := examUserIDTx(tx, examID)
+	if err != nil {
+		http.Error(w, "Failed to save answer", http.StatusInternalServerError)
+		return
+	}
+	if userID.Valid {
+		if err := rebuildUserQuestionStatsTx(tx, int(userID.Int64)); err != nil {
+			http.Error(w, "Failed to save answer", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if qIdx == totalQuestions {
@@ -483,6 +500,16 @@ func upsertExamAnswer(tx *sql.Tx, examID, questionID int, selected []int, isCorr
 		}
 	}
 	return nil
+}
+
+func examUserIDTx(tx *sql.Tx, examID int) (sql.NullInt64, error) {
+	var userID sql.NullInt64
+	err := tx.QueryRow(`
+		SELECT user_id
+		FROM exams
+		WHERE id = ?
+	`, examID).Scan(&userID)
+	return userID, err
 }
 
 func finalizeExam(tx *sql.Tx, examID int) (int, error) {

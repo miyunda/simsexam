@@ -1,0 +1,63 @@
+{{define "content"}}
+<section class="admin-page">
+    <div class="admin-page-header">
+        <div>
+            <p class="eyebrow">Mistake Review</p>
+            <h1>{{.QuestionKey}}</h1>
+            <p class="subtitle">{{.SubjectTitle}}</p>
+        </div>
+        <a href="/me/mistakes" class="btn-api secondary">Back to Notebook</a>
+    </div>
+
+    <div class="stats-grid">
+        <div class="alert-card">
+            <strong>Wrong</strong>
+            <p class="stat-value">{{.WrongCount}}</p>
+        </div>
+        <div class="alert-card">
+            <strong>Correct</strong>
+            <p class="stat-value">{{.CorrectCount}}</p>
+        </div>
+        <div class="alert-card">
+            <strong>Mastery</strong>
+            <p class="stat-value">{{.MasteryStatus}}</p>
+        </div>
+    </div>
+
+    {{if ne .Status "active"}}
+    <div class="alert-card alert-warning">
+        <strong>Question is {{.Status}}</strong>
+        <p class="table-subtext">This review uses the latest available content for the question.</p>
+    </div>
+    {{end}}
+
+    <div class="question-card">
+        <div class="question-text">{{.QuestionHTML}}</div>
+
+        <div class="options-grid">
+            {{range .Options}}
+            <div class="review-option {{if .IsCorrect}}correct-option{{end}}">
+                <span>{{.Text}}</span>
+                {{if .IsCorrect}}<span class="pill">correct</span>{{end}}
+            </div>
+            {{end}}
+        </div>
+
+        <div class="explanation">
+            <strong>Explanation:</strong>
+            <div class="explanation-body">{{.Explanation}}</div>
+        </div>
+
+        <dl class="review-meta">
+            <div>
+                <dt class="table-subtext">Last answered</dt>
+                <dd>{{.LastAnsweredAt}}</dd>
+            </div>
+            <div>
+                <dt class="table-subtext">Last wrong</dt>
+                <dd>{{.LastWrongAt}}</dd>
+            </div>
+        </dl>
+    </div>
+</section>
+{{end}}
