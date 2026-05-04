@@ -25,8 +25,17 @@
                     style="padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface); color: var(--text-primary);">
 
                 <label for="password">Password</label>
-                <input id="password" name="password" type="password" autocomplete="new-password" required
+                <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required
                     style="padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface); color: var(--text-primary);">
+
+                <label for="confirm_password">Confirm Password</label>
+                <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" minlength="8" required
+                    style="padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--surface); color: var(--text-primary);">
+
+                <label class="option-correct-toggle">
+                    <input id="show_passwords" type="checkbox">
+                    Show passwords
+                </label>
 
                 <div>
                     <button type="submit" class="btn-api primary">Create Account</button>
@@ -36,4 +45,19 @@
         </form>
     </div>
 </section>
+<script>
+    (function () {
+        var toggle = document.getElementById("show_passwords");
+        var password = document.getElementById("password");
+        var confirmPassword = document.getElementById("confirm_password");
+        if (!toggle || !password || !confirmPassword) {
+            return;
+        }
+        toggle.addEventListener("change", function () {
+            var type = toggle.checked ? "text" : "password";
+            password.type = type;
+            confirmPassword.type = type;
+        });
+    }());
+</script>
 {{end}}

@@ -66,8 +66,9 @@ func RegisterSubmit(cfg config.ServerConfig) http.HandlerFunc {
 
 		email := normalizeEmail(r.FormValue("email"))
 		password := r.FormValue("password")
+		confirmPassword := r.FormValue("confirm_password")
 		displayName := strings.TrimSpace(r.FormValue("display_name"))
-		if err := validateRegistration(email, password); err != nil {
+		if err := validateRegistration(email, password, confirmPassword); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			renderTemplate(w, "register.html", userAuthPageData{Error: err.Error(), Email: email})
 			return
@@ -235,12 +236,15 @@ func userAuthConfigured(cfg config.ServerConfig) bool {
 	return cfg.UserSessionSecret != ""
 }
 
-func validateRegistration(email, password string) error {
+func validateRegistration(email, password, confirmPassword string) error {
 	if _, err := mail.ParseAddress(email); err != nil {
 		return fmt.Errorf("Enter a valid email address.")
 	}
 	if len(password) < 8 {
 		return fmt.Errorf("Password must be at least 8 characters.")
+	}
+	if password != confirmPassword {
+		return fmt.Errorf("Passwords do not match.")
 	}
 	return nil
 }

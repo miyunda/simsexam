@@ -60,6 +60,7 @@ func TestUserRegisterLoginAndAccountPage(t *testing.T) {
 	registerForm.Set("email", "Learner@Example.COM")
 	registerForm.Set("display_name", "Learner One")
 	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
 
 	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -126,6 +127,7 @@ func TestUserLoginRejectsInvalidPassword(t *testing.T) {
 	registerForm := url.Values{}
 	registerForm.Set("email", "learner@example.com")
 	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
 	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -147,6 +149,35 @@ func TestUserLoginRejectsInvalidPassword(t *testing.T) {
 	}
 	if strings.Contains(rec.Header().Get("Set-Cookie"), "simsexam_user_session") {
 		t.Fatal("expected invalid login not to set user session cookie")
+	}
+}
+
+func TestUserRegisterRejectsMismatchedPasswords(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "mismatch@example.com")
+	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "different-password")
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 from mismatched password registration, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Passwords do not match.") {
+		t.Fatalf("expected mismatch error, got body: %s", rec.Body.String())
+	}
+
+	var userCount int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM users WHERE email = 'mismatch@example.com'`).Scan(&userCount); err != nil {
+		t.Fatalf("count mismatch user failed: %v", err)
+	}
+	if userCount != 0 {
+		t.Fatalf("expected no user for mismatched passwords, got %d", userCount)
 	}
 }
 
@@ -337,6 +368,7 @@ func TestSecureCookieConfigurationAppliesToUserAndAnonymousSessions(t *testing.T
 	registerForm := url.Values{}
 	registerForm.Set("email", "secure@example.com")
 	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
 	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -388,6 +420,7 @@ func TestRegisterClaimsAnonymousExamAndFeedbackHistory(t *testing.T) {
 	registerForm := url.Values{}
 	registerForm.Set("email", "claim@example.com")
 	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
 	req = httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(anonCookie)
@@ -439,6 +472,7 @@ func TestLoginClaimsAnonymousExamHistory(t *testing.T) {
 	registerForm := url.Values{}
 	registerForm.Set("email", "login-claim@example.com")
 	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
 	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -485,6 +519,7 @@ func TestSignedInAnswerUpdatesMistakeNotebook(t *testing.T) {
 	registerForm := url.Values{}
 	registerForm.Set("email", "mistakes@example.com")
 	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
 	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -571,6 +606,7 @@ func TestRegisterClaimRebuildsMistakeStats(t *testing.T) {
 	registerForm := url.Values{}
 	registerForm.Set("email", "claimed-mistakes@example.com")
 	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
 	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(anonCookie)
