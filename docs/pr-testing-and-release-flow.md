@@ -79,6 +79,12 @@ Source of deployed artifact:
 
 - the same PR commit artifact already used in internal testing
 
+Deployment mechanism:
+
+- GitHub Actions `Deploy Staging` workflow
+- manual `workflow_dispatch` trigger after internal testing passes
+- explicit `commit_sha` input so staging always receives one known candidate artifact
+
 ### Production
 
 Production only receives formal release artifacts.
@@ -116,7 +122,52 @@ The following gates should hold:
 - public staging must pass before merge and tag creation
 - production must deploy only formal release artifacts
 
-## 7. Tag Discipline
+## 7. Staging Deployment Operation
+
+Current validated staging procedure:
+
+1. Merge the workflow changes needed for staging deployment into `main`.
+2. Let `ci.yml` build and upload the commit artifact for the target commit.
+3. Complete internal testing for that same commit artifact.
+4. In GitHub Actions, open `Deploy Staging`.
+5. Enter the full 40-character Git commit SHA in `commit_sha`.
+6. Run the workflow manually.
+
+Required implementation details:
+
+- `Deploy Staging` exists as a separate workflow from `ci.yml`
+- `Deploy Staging` uses `workflow_dispatch`
+- `Deploy Staging` downloads the artifact produced by `ci.yml`
+- the artifact name must match `simsexam-commit-<full commit sha>`
+- the workflow must be present on the default branch before GitHub exposes it reliably in the Actions UI
+
+Commit identity rule for manual staging deploys:
+
+- the `commit_sha` input is a Git commit SHA, not a file checksum
+- use the exact full SHA that matches the CI artifact name
+- do not use the artifact ZIP digest or SHA256SUMS entry as the workflow input
+
+## 8. Staging Environment Secrets
+
+Current validated setup:
+
+- staging deployment reads secrets from the GitHub Actions environment named `Staging`
+- the `deploy-staging` job must declare `environment: Staging`
+
+Current required environment secrets:
+
+- `STAGING_HOST`
+- `STAGING_SSH_PORT`
+- `STAGING_SSH_USER`
+- `STAGING_SSH_PRIVATE_KEY`
+- `STAGING_SSH_KNOWN_HOSTS`
+
+Operational note:
+
+- repository secrets with the same names are not required when the workflow is bound to the `Staging` environment
+- if the workflow stops declaring `environment: Staging`, these values will resolve as empty and the SSH preparation step will fail immediately
+
+## 9. Tag Discipline
 
 Tags are not for exploratory testing.
 
@@ -132,7 +183,7 @@ As a result:
 - do not deploy arbitrary commit artifacts directly to production
 - do not treat GitHub Releases as branch validation artifacts
 
-## 8. Hermes Integration Status
+## 10. Hermes Integration Status
 
 Hermes review belongs in the PR validation phase.
 
@@ -145,7 +196,7 @@ Current policy until that is solved:
 - keep Hermes review as a planned or manually triggered validation step
 - do not block the rest of the documented release flow on public Hermes connectivity work
 
-## 9. Operational Benefits
+## 11. Operational Benefits
 
 This workflow provides:
 
@@ -155,7 +206,7 @@ This workflow provides:
 - better separation between SHA-based testing and tag-based production release
 - more credible auditability for what actually reached production
 
-## 10. Release Readiness
+## 12. Release Readiness
 
 A PR passing CI and staging does not automatically mean it should become a
 formal release.
@@ -181,7 +232,19 @@ Example for the current Phase 3 direction:
 - anonymous sessions alone are not a strong release boundary
 - login plus history claim plus learner review or mistake workflows would be a stronger release candidate
 
-## 11. Relationship To Other Docs
+## 13. Staging Version Display
+
+Current expected staging footer behavior:
+
+- staging deployments from commit artifacts should display a CI-oriented version such as `ci-fd98e6b`
+- the short commit SHA may also appear separately in the footer
+
+This is intentional:
+
+- staging is showing build identity for a commit artifact
+- staging is not expected to show a formal `vX.Y.Z` release tag unless it is running a tagged release artifact
+
+## 14. Relationship To Other Docs
 
 This document defines environment flow and artifact semantics.
 
