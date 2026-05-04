@@ -1416,7 +1416,7 @@ func TestQuestionFeedbackSubmissionAndAdminReview(t *testing.T) {
 	}
 }
 
-func TestAdminRoutesRedirectWithoutSession(t *testing.T) {
+func TestAdminRoutesRedirectToUserLoginWhenNoSessionButUserAuthConfigured(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
 

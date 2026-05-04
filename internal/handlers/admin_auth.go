@@ -149,6 +149,7 @@ func AdminAuthMiddleware(cfg config.ServerConfig) func(http.Handler) http.Handle
 				return
 			}
 
+			// No user session is expected during the shared-password fallback path.
 			cookie, err := r.Cookie(adminSessionCookieName)
 			if adminAccessConfigured(cfg) && err == nil && verifyAdminSession(cookie.Value, cfg.AdminSessionSecret, time.Now()) {
 				next.ServeHTTP(w, r)
