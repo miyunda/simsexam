@@ -9,6 +9,23 @@
         <a href="/me" class="btn-api secondary">Account</a>
     </div>
 
+    {{if .SubjectOptions}}
+    <form action="/me/mistakes" method="GET" class="admin-form-card mistake-filter-form">
+        <div class="form-section">
+            <label for="subject_id">Subject</label>
+            <select id="subject_id" name="subject_id" class="form-select" onchange="this.form.submit()">
+                <option value="">All subjects</option>
+                {{range .SubjectOptions}}
+                <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Title}}</option>
+                {{end}}
+            </select>
+        </div>
+        <noscript>
+            <button type="submit" class="btn-api secondary">Apply Filter</button>
+        </noscript>
+    </form>
+    {{end}}
+
     {{if .Mistakes}}
     <div class="admin-table-wrap">
         <table class="admin-table">
@@ -43,8 +60,13 @@
     </div>
     {{else}}
     <div class="alert-card alert-success">
+        {{if .SelectedSubject}}
+        <strong>No wrong answers for this subject</strong>
+        <p class="table-subtext">Choose another subject or clear the filter to see all mistakes.</p>
+        {{else}}
         <strong>No wrong answers yet</strong>
         <p class="table-subtext">After you miss questions while signed in, they will appear here for review.</p>
+        {{end}}
     </div>
     {{end}}
 </section>

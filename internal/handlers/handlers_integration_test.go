@@ -642,6 +642,72 @@ func TestRegisterClaimRebuildsMistakeStats(t *testing.T) {
 	}
 }
 
+func TestMistakeNotebookFiltersBySubject(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "filter-mistakes@example.com")
+	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	userCookie := userSessionCookieFromRecorder(t, rec)
+
+	var userID int
+	if err := database.DB.QueryRow(`SELECT id FROM users WHERE email = 'filter-mistakes@example.com'`).Scan(&userID); err != nil {
+		t.Fatalf("query user failed: %v", err)
+	}
+	otherSubjectID, otherQuestionKey := createSecondSubjectWithQuestion(t)
+
+	if _, err := database.DB.Exec(`
+		INSERT INTO user_question_stats (
+			user_id, subject_id, question_key, wrong_count, correct_count,
+			last_answered_at, last_wrong_at, mastery_status
+		)
+		VALUES
+			(?, 1, 'SE-001', 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'weak'),
+			(?, ?, ?, 2, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'mastered')
+	`, userID, userID, otherSubjectID, otherQuestionKey); err != nil {
+		t.Fatalf("insert mistake stats failed: %v", err)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/me/mistakes", nil)
+	req.AddCookie(userCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on mistakes page, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "SE Demo Subject") || !strings.Contains(body, "Second Demo Subject") {
+		t.Fatalf("expected all-subject view to show both subjects, got body: %s", body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/me/mistakes?subject_id=%d", otherSubjectID), nil)
+	req.AddCookie(userCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on filtered mistakes page, got %d", rec.Code)
+	}
+	body = rec.Body.String()
+	if strings.Contains(body, "<td>SE Demo Subject</td>") {
+		t.Fatalf("expected filtered view to hide first subject, got body: %s", body)
+	}
+	if !strings.Contains(body, "Second Demo Subject") || !strings.Contains(body, otherQuestionKey) {
+		t.Fatalf("expected filtered view to show second subject mistake, got body: %s", body)
+	}
+	if !strings.Contains(body, fmt.Sprintf(`value="%d" selected`, otherSubjectID)) {
+		t.Fatalf("expected filtered subject option to be selected, got body: %s", body)
+	}
+}
+
 func TestAdminSubjectsAndQuestionsPages(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
@@ -1583,6 +1649,64 @@ func wrongOptionIDs(t *testing.T, questionID int, correctOptionIDs []int) []int 
 		return wrong[:1]
 	}
 	return wrong[:len(correctOptionIDs)]
+}
+
+func createSecondSubjectWithQuestion(t *testing.T) (int, string) {
+	t.Helper()
+
+	res, err := database.DB.Exec(`
+		INSERT INTO subjects (slug, title, description, duration_minutes, question_count, access_level, status)
+		VALUES ('second-demo', 'Second Demo Subject', 'Second subject for tests', 30, 1, 'free', 'published')
+	`)
+	if err != nil {
+		t.Fatalf("insert second subject failed: %v", err)
+	}
+	subjectID64, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("read second subject id failed: %v", err)
+	}
+	subjectID := int(subjectID64)
+
+	res, err = database.DB.Exec(`
+		INSERT INTO question_sets (subject_id, version, source_type, source_name, is_active)
+		VALUES (?, 'test', 'manual', 'test', 1)
+	`, subjectID)
+	if err != nil {
+		t.Fatalf("insert second question set failed: %v", err)
+	}
+	questionSetID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("read second question set id failed: %v", err)
+	}
+	if _, err := database.DB.Exec(`
+		UPDATE subjects
+		SET current_question_set_id = ?
+		WHERE id = ?
+	`, questionSetID, subjectID); err != nil {
+		t.Fatalf("update second subject current set failed: %v", err)
+	}
+
+	questionKey := "SECOND-001"
+	res, err = database.DB.Exec(`
+		INSERT INTO questions (subject_id, question_set_id, external_key, type, stem_markdown, explanation_markdown, status)
+		VALUES (?, ?, ?, 'single', 'Second subject question?', 'Second subject explanation.', 'active')
+	`, subjectID, questionSetID, questionKey)
+	if err != nil {
+		t.Fatalf("insert second question failed: %v", err)
+	}
+	questionID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("read second question id failed: %v", err)
+	}
+	if _, err := database.DB.Exec(`
+		INSERT INTO question_options (question_id, option_key, content_markdown, sort_order, is_correct)
+		VALUES
+			(?, 'A', 'Correct second answer', 1, 1),
+			(?, 'B', 'Wrong second answer', 2, 0)
+	`, questionID, questionID); err != nil {
+		t.Fatalf("insert second options failed: %v", err)
+	}
+	return subjectID, questionKey
 }
 
 func postAnswer(t *testing.T, router http.Handler, examID, questionID, position int, optionIDs []int, final bool) {
