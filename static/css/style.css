@@ -625,3 +625,12 @@ nav a:hover {
 .review-meta dd {
     margin: 4px 0 0;
 }
+
+.mistake-filter-form {
+    margin-bottom: 18px;
+}
+
+.mistake-filter-form .form-section {
+    margin-bottom: 0;
+    max-width: 420px;
+}

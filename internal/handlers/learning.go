@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"simsexam/internal/config"
 	"simsexam/internal/database"
@@ -23,6 +24,18 @@ type mistakeNotebookRow struct {
 	CorrectCount    int
 	LastWrongAt     string
 	MasteryStatus   string
+}
+
+type mistakeSubjectFilterOption struct {
+	ID       int
+	Title    string
+	Selected bool
+}
+
+type mistakeNotebookData struct {
+	Mistakes        []mistakeNotebookRow
+	SubjectOptions  []mistakeSubjectFilterOption
+	SelectedSubject int
 }
 
 type mistakeReviewData struct {
@@ -53,7 +66,20 @@ func MistakeNotebook(cfg config.ServerConfig) http.HandlerFunc {
 			return
 		}
 
-		rows, err := database.DB.Query(`
+		selectedSubject, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("subject_id")))
+		subjectOptions, err := loadMistakeSubjectFilterOptions(userID, selectedSubject)
+		if err != nil {
+			http.Error(w, "Failed to load mistakes", http.StatusInternalServerError)
+			return
+		}
+		if selectedSubject > 0 && !mistakeSubjectFilterExists(subjectOptions, selectedSubject) {
+			selectedSubject = 0
+			for idx := range subjectOptions {
+				subjectOptions[idx].Selected = false
+			}
+		}
+
+		query := `
 			SELECT
 				s.id,
 				s.title,
@@ -75,10 +101,17 @@ func MistakeNotebook(cfg config.ServerConfig) http.HandlerFunc {
 					q2.updated_at DESC,
 					q2.id DESC
 				LIMIT 1
-			)
+				)
 			WHERE uqs.user_id = ? AND uqs.wrong_count > 0
-			ORDER BY uqs.last_wrong_at DESC, uqs.id DESC
-		`, userID)
+		`
+		args := []any{userID}
+		if selectedSubject > 0 {
+			query += ` AND uqs.subject_id = ?`
+			args = append(args, selectedSubject)
+		}
+		query += ` ORDER BY uqs.last_wrong_at DESC, uqs.id DESC`
+
+		rows, err := database.DB.Query(query, args...)
 		if err != nil {
 			http.Error(w, "Failed to load mistakes", http.StatusInternalServerError)
 			return
@@ -109,12 +142,46 @@ func MistakeNotebook(cfg config.ServerConfig) http.HandlerFunc {
 			return
 		}
 
-		renderTemplate(w, "mistakes.html", struct {
-			Mistakes []mistakeNotebookRow
-		}{
-			Mistakes: mistakes,
+		renderTemplate(w, "mistakes.html", mistakeNotebookData{
+			Mistakes:        mistakes,
+			SubjectOptions:  subjectOptions,
+			SelectedSubject: selectedSubject,
 		})
 	}
+}
+
+func loadMistakeSubjectFilterOptions(userID, selectedSubject int) ([]mistakeSubjectFilterOption, error) {
+	rows, err := database.DB.Query(`
+		SELECT DISTINCT s.id, s.title
+		FROM user_question_stats uqs
+		JOIN subjects s ON s.id = uqs.subject_id
+		WHERE uqs.user_id = ? AND uqs.wrong_count > 0
+		ORDER BY s.title
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var options []mistakeSubjectFilterOption
+	for rows.Next() {
+		var option mistakeSubjectFilterOption
+		if err := rows.Scan(&option.ID, &option.Title); err != nil {
+			return nil, err
+		}
+		option.Selected = option.ID == selectedSubject
+		options = append(options, option)
+	}
+	return options, rows.Err()
+}
+
+func mistakeSubjectFilterExists(options []mistakeSubjectFilterOption, subjectID int) bool {
+	for _, option := range options {
+		if option.ID == subjectID {
+			return true
+		}
+	}
+	return false
 }
 
 func MistakeReview(cfg config.ServerConfig) http.HandlerFunc {
