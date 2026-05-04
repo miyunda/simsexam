@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"simsexam/internal/config"
+	"simsexam/internal/database"
 )
 
 const adminSessionCookieName = "simsexam_admin_session"
@@ -133,22 +135,58 @@ func AdminLogout(cfg config.ServerConfig) http.HandlerFunc {
 func AdminAuthMiddleware(cfg config.ServerConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !adminAccessConfigured(cfg) {
-				http.Error(w, "Admin access is not configured.", http.StatusServiceUnavailable)
+			if userID, ok := currentUserID(r, cfg); ok {
+				isAdmin, err := userHasAdminRole(userID)
+				if err != nil {
+					http.Error(w, "Failed to verify admin access.", http.StatusInternalServerError)
+					return
+				}
+				if !isAdmin {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+				next.ServeHTTP(w, r)
 				return
 			}
+
+			// No user session is expected during the shared-password fallback path.
 			cookie, err := r.Cookie(adminSessionCookieName)
-			if err != nil || !verifyAdminSession(cookie.Value, cfg.AdminSessionSecret, time.Now()) {
+			if adminAccessConfigured(cfg) && err == nil && verifyAdminSession(cookie.Value, cfg.AdminSessionSecret, time.Now()) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if userAuthConfigured(cfg) {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+			if adminAccessConfigured(cfg) {
 				http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 				return
 			}
-			next.ServeHTTP(w, r)
+			http.Error(w, "Admin access is not configured.", http.StatusServiceUnavailable)
 		})
 	}
 }
 
 func adminAccessConfigured(cfg config.ServerConfig) bool {
 	return cfg.AdminPassword != "" && cfg.AdminSessionSecret != ""
+}
+
+func userHasAdminRole(userID int) (bool, error) {
+	var role string
+	err := database.DB.QueryRow(`
+		SELECT role
+		FROM users
+		WHERE id = ? AND status = 'active'
+	`, userID).Scan(&role)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return role == "admin", nil
 }
 
 func newAdminLoginRateLimiter(now func() time.Time, maxFailures int, window, blockDuration time.Duration) *adminLoginRateLimiter {

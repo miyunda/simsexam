@@ -34,6 +34,7 @@ type accountPageData struct {
 	DisplayName string
 	Role        string
 	CreatedAt   string
+	IsAdmin     bool
 }
 
 func RegisterForm(cfg config.ServerConfig) http.HandlerFunc {
@@ -228,6 +229,7 @@ func AccountPage(cfg config.ServerConfig) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
+		data.IsAdmin = data.Role == "admin"
 		renderTemplate(w, "account.html", data)
 	}
 }

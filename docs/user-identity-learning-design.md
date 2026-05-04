@@ -373,10 +373,10 @@ Payment integration can come later after the authorization model is proven.
    - rebuild stats after anonymous session claim
    - first wrong-answer notebook pages
 
-5. later: `d/admin-role-auth`
+5. completed in current iteration: `d/admin-role-auth`
    - allow `users.role = admin` into admin routes
    - keep shared admin password as fallback during transition
-   - add only the minimum admin-facing user operations needed for role assignment
+   - remaining: add only the minimum admin-facing user operations needed for role assignment
 
 6. later: `d/account-linking`
    - allow logged-in users to attach additional identity providers

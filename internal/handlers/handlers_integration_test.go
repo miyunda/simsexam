@@ -1416,7 +1416,7 @@ func TestQuestionFeedbackSubmissionAndAdminReview(t *testing.T) {
 	}
 }
 
-func TestAdminRoutesRedirectWithoutSession(t *testing.T) {
+func TestAdminRoutesRedirectToUserLoginWhenNoSessionButUserAuthConfigured(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
 
@@ -1427,12 +1427,79 @@ func TestAdminRoutesRedirectWithoutSession(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected 303 redirect for unauthenticated admin request, got %d", rec.Code)
 	}
-	if rec.Header().Get("Location") != "/admin/login" {
-		t.Fatalf("expected redirect to /admin/login, got %q", rec.Header().Get("Location"))
+	if rec.Header().Get("Location") != "/login" {
+		t.Fatalf("expected redirect to /login, got %q", rec.Header().Get("Location"))
 	}
 }
 
-func TestAdminRoutesFailClosedWithoutConfiguration(t *testing.T) {
+func TestAdminRoutesUseRoleBasedUserAccess(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	adminCookie := registerUserForTest(t, router, "role-admin@example.com", "Role Admin")
+	if _, err := database.DB.Exec(`
+		UPDATE users
+		SET role = 'admin'
+		WHERE email = 'role-admin@example.com'
+	`); err != nil {
+		t.Fatalf("promote test user failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/subjects", nil)
+	req.AddCookie(adminCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for role admin, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "SE Demo Subject") {
+		t.Fatalf("expected admin subjects page for role admin, got body: %s", rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/me", nil)
+	req.AddCookie(adminCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on account page, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Admin Console") {
+		t.Fatalf("expected admin account page to link admin console, got body: %s", rec.Body.String())
+	}
+}
+
+func TestAdminRoutesForbidNonAdminUser(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+	userCookie := registerUserForTest(t, router, "plain-user@example.com", "Plain User")
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/subjects", nil)
+	req.AddCookie(userCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin user, got %d with body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminRoutesStillAllowSharedPasswordSessionFallback(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+	adminCookie := adminSessionCookie(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/subjects", nil)
+	req.AddCookie(adminCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for shared admin session fallback, got %d with body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminRoutesRedirectToUserLoginWithoutSharedAdminConfiguration(t *testing.T) {
 	setupHandlerTestEnv(t)
 	t.Setenv(config.EnvAdminPassword, "")
 	t.Setenv(config.EnvAdminSessionKey, "")
@@ -1442,8 +1509,27 @@ func TestAdminRoutesFailClosedWithoutConfiguration(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 when user auth is configured, got %d", rec.Code)
+	}
+	if rec.Header().Get("Location") != "/login" {
+		t.Fatalf("expected redirect to /login, got %q", rec.Header().Get("Location"))
+	}
+}
+
+func TestAdminRoutesFailClosedWithoutAnyAdminOrUserAuthConfiguration(t *testing.T) {
+	setupHandlerTestEnv(t)
+	t.Setenv(config.EnvAdminPassword, "")
+	t.Setenv(config.EnvAdminSessionKey, "")
+	t.Setenv(config.EnvUserSessionKey, "")
+	router := newTestRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/subjects", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when admin access is not configured, got %d", rec.Code)
+		t.Fatalf("expected 503 when admin and user auth are not configured, got %d", rec.Code)
 	}
 }
 
@@ -1503,6 +1589,24 @@ func userSessionCookieFromRecorder(t *testing.T, rec *httptest.ResponseRecorder)
 	}
 	t.Fatal("expected user session cookie")
 	return nil
+}
+
+func registerUserForTest(t *testing.T, router http.Handler, email, displayName string) *http.Cookie {
+	t.Helper()
+
+	registerForm := url.Values{}
+	registerForm.Set("email", email)
+	registerForm.Set("display_name", displayName)
+	registerForm.Set("password", "correct-password")
+	registerForm.Set("confirm_password", "correct-password")
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	return userSessionCookieFromRecorder(t, rec)
 }
 
 func adminSessionCookie(t *testing.T, router http.Handler) *http.Cookie {

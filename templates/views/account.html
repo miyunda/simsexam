@@ -21,6 +21,9 @@
         </dl>
         <div class="actions" style="margin-bottom: 18px;">
             <a href="/me/mistakes" class="btn-api primary">Wrong-Answer Notebook</a>
+            {{if .IsAdmin}}
+            <a href="/admin/subjects" class="btn-api secondary">Admin Console</a>
+            {{end}}
         </div>
         <form action="/logout" method="POST">
             <button type="submit" class="btn-api secondary">Sign Out</button>
