@@ -102,8 +102,8 @@ Move from anonymous practice sessions toward durable user learning records.
 - completed: claim current-browser anonymous exams and feedback after registration or login
 - completed in current iteration: implement learner mistake tracking and a first wrong-answer notebook flow
 - completed in current iteration: build user-facing review pages for weak questions or repeated mistakes
-- later: connect admin access to `users.role = admin`
-- later: retire the shared admin password model after role-based admin auth is ready
+- completed in current iteration: connect admin access to `users.role = admin`
+- later: retire the shared admin password model after role-based admin auth is validated in deployment
 - later: support third-party identity integration planning or first rollout
 - later: prepare subject entitlement structure for future paid content
 

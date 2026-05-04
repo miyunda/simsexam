@@ -158,6 +158,10 @@ A proxy-level restriction may still be useful as defense in depth, but it should
 
 Later, when normal user login exists, admin access should move to the main user model.
 
+Status: implemented as a transition path. Admin routes now accept active users
+with `users.role = admin`, while the deployment-level shared admin password
+remains available as a fallback during rollout.
+
 The schema already points in that direction with:
 
 - `users`
@@ -172,7 +176,8 @@ The target model should become:
 
 At that point:
 
-- `SIMSEXAM_ADMIN_PASSWORD` can be deprecated
+- `SIMSEXAM_ADMIN_PASSWORD` can be deprecated after role-based access is
+  validated in deployment
 - the admin session can become part of the normal authenticated user session
 
 ## First Admin Bootstrap In Phase B
@@ -274,10 +279,10 @@ Minimum tests for a future implementation:
 
 ### Phase B
 
-- add standard end-user login
-- connect identities and roles
-- migrate admin access to user role checks
-- retire the shared admin password model
+- completed: add standard end-user login
+- completed: connect identities and roles for admin route authorization
+- completed: migrate admin access to user role checks
+- remaining: retire the shared admin password model after deployment validation
 
 ## Recommendation
 
