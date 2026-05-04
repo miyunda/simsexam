@@ -12,8 +12,13 @@ The project now has:
 - self-contained release bundles
 - basic admin access protection
 - stable single-host deployment
+- validated commit-artifact deployment to the `Staging` environment
+- learner registration and login
+- anonymous learning sessions that can be claimed after registration or login
+- first-version question quality feedback workflows
 
-The next step is to move from "working prototype with operational discipline" toward "maintainable product with stronger content quality and user workflows."
+The next step is to turn the newly introduced identity foundation into a
+visible learner workflow.
 
 ## Guiding Priorities
 
@@ -32,20 +37,23 @@ Turn the current single-host deployment and admin workflow into a repeatable, lo
 
 ### Planned Work
 
-- verify production-oriented admin protection behavior in real deployment
-- review admin login and rate-limit logs after public exposure
-- tighten deployment and smoke-test documentation where operator friction still exists
-- refine admin status workflows around:
+- completed: validate repeatable staging deployment from CI commit artifacts
+- completed: document PR, staging, and release-promotion flow
+- completed: bind staging deployment secrets to the `Staging` environment
+- remaining: verify production-oriented admin protection behavior in real deployment
+- remaining: review admin login and rate-limit logs after public exposure
+- remaining: tighten deployment and smoke-test documentation where operator friction still exists
+- completed: refine admin status workflows around:
   - archived subjects
   - disabled questions
-- improve status visibility in admin pages
-- clarify revision summaries for admin actions
+- completed: improve status visibility in admin pages
+- completed: clarify revision summaries for admin actions
 
 ### Exit Criteria
 
-- test deployment remains stable under real operator usage
-- release, deploy, and rollback instructions are reliable
-- admin access control and login rate limiting behave predictably
+- completed: test deployment remains stable under real operator usage
+- completed: release, deploy, and rollback instructions are reliable enough for the current staging flow
+- remaining: admin access control and login rate limiting behave predictably after public production exposure
 
 ## Phase 2: Strengthen Question-Bank Quality Workflows
 
@@ -55,16 +63,16 @@ Improve the system's ability to manage, review, and correct question-bank conten
 
 ### Planned Work
 
-- expose option-shuffling controls in admin UI:
+- completed: expose option-shuffling controls in admin UI:
   - subject-level `shuffle_options_default`
   - question-level `allow_option_shuffle`
-- add question revision and history viewing
-- implement learner question feedback first version:
+- completed: add question revision and history viewing
+- completed: implement learner question feedback first version:
   - learner-side structured report flow
   - admin feedback list
   - resolve and dismiss actions
-- improve importer validation quality and warning clarity
-- continue refining admin content-editing ergonomics
+- remaining: improve importer validation quality and warning clarity
+- remaining: continue refining admin content-editing ergonomics
 
 ### Why This Phase Matters
 
@@ -77,9 +85,9 @@ The question bank is a core product asset. This phase focuses on improving:
 
 ### Exit Criteria
 
-- admins can configure option shuffling intentionally
-- admins can inspect question history without reading raw database tables
-- learners have a structured way to report flawed questions
+- completed: admins can configure option shuffling intentionally
+- completed: admins can inspect question history without reading raw database tables
+- completed: learners have a structured way to report flawed questions
 
 ## Phase 3: Add User Identity And Learning Workflows
 
@@ -89,13 +97,15 @@ Move from anonymous practice sessions toward durable user learning records.
 
 ### Planned Work
 
-- implement user authentication
-- support third-party identity integration planning or first rollout
-- connect admin access to `users.role = admin`
-- retire the shared admin password model after role-based admin auth is ready
-- implement learner mistake tracking and a first wrong-answer notebook flow
-- build user-facing review pages for weak questions or repeated mistakes
-- prepare subject entitlement structure for future paid content
+- completed: implement first-pass email/password user authentication
+- completed: add durable anonymous learning sessions
+- completed: claim current-browser anonymous exams and feedback after registration or login
+- completed in current iteration: implement learner mistake tracking and a first wrong-answer notebook flow
+- completed in current iteration: build user-facing review pages for weak questions or repeated mistakes
+- later: connect admin access to `users.role = admin`
+- later: retire the shared admin password model after role-based admin auth is ready
+- later: support third-party identity integration planning or first rollout
+- later: prepare subject entitlement structure for future paid content
 
 Scope note:
 
@@ -163,17 +173,25 @@ Improve observability, safety, and maintainability once the main product workflo
 
 ## Immediate Next Iteration Recommendation
 
-If the team only takes on one short iteration next, the best sequence is:
+The immediate Phase 2 sequence has been completed:
 
 1. expose option-shuffling controls in admin UI
 2. add question revision/history viewing
 3. implement question feedback first version
+
+The current short iteration implements:
+
+1. implement `user_question_stats` updates during answer submission
+2. add `/me/mistakes` as the first wrong-answer notebook page
+3. add a question review page linked from the notebook
+4. rebuild or refresh stats when an anonymous session is claimed by a user
 
 This sequence stays close to the product's core value:
 
 - question quality
 - reviewability
 - learner trust
+- visible learner progress
 
 ## What Is Deliberately Not Prioritized Yet
 
@@ -191,9 +209,9 @@ Those can be revisited later if the product and user base justify them.
 
 The current roadmap direction is:
 
-- stabilize what is already deployed
-- invest next in question-bank quality workflows
-- then add real user identity and learning continuity
+- keep the validated deployment baseline stable
+- continue polishing question-bank quality workflows as issues appear
+- invest next in real learner continuity through mistake tracking
 - then broaden release and deployment options
 
 This keeps `simsexam` moving toward a professional product without prematurely optimizing for scale it does not need yet.

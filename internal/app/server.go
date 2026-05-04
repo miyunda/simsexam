@@ -63,6 +63,8 @@ func NewRouter(cfg config.ServerConfig) http.Handler {
 	r.Post("/login", handlers.LoginSubmit(cfg))
 	r.Post("/logout", handlers.UserLogout(cfg))
 	r.Get("/me", handlers.AccountPage(cfg))
+	r.Get("/me/mistakes", handlers.MistakeNotebook(cfg))
+	r.Get("/me/mistakes/{subjectID}/{questionKey}", handlers.MistakeReview(cfg))
 	r.Get("/admin/login", handlers.AdminLoginForm(cfg))
 	r.Post("/admin/login", handlers.AdminLoginSubmit(cfg))
 	r.Post("/admin/logout", handlers.AdminLogout(cfg))

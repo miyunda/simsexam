@@ -478,6 +478,134 @@ func TestLoginClaimsAnonymousExamHistory(t *testing.T) {
 	}
 }
 
+func TestSignedInAnswerUpdatesMistakeNotebook(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "mistakes@example.com")
+	registerForm.Set("password", "correct-password")
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	userCookie := userSessionCookieFromRecorder(t, rec)
+
+	examID, _ := startExamWithCookies(t, router, 1, []*http.Cookie{userCookie})
+	var examUserID sql.NullInt64
+	if err := database.DB.QueryRow(`SELECT user_id FROM exams WHERE id = ?`, examID).Scan(&examUserID); err != nil {
+		t.Fatalf("query exam user failed: %v", err)
+	}
+	if !examUserID.Valid {
+		t.Fatal("expected signed-in exam to store user_id")
+	}
+
+	totalQuestions := examQuestionCountForTest(t, examID)
+	firstQuestionID, correctOptionIDs := examQuestionAndCorrectOptions(t, examID, 1)
+	postAnswer(t, router, examID, firstQuestionID, 1, wrongOptionIDs(t, firstQuestionID, correctOptionIDs), totalQuestions == 1)
+	for position := 2; position <= totalQuestions; position++ {
+		questionID, correctIDs := examQuestionAndCorrectOptions(t, examID, position)
+		postAnswer(t, router, examID, questionID, position, correctIDs, position == totalQuestions)
+	}
+
+	var (
+		questionKey   string
+		wrongCount    int
+		masteryStatus string
+	)
+	if err := database.DB.QueryRow(`
+		SELECT uqs.question_key, uqs.wrong_count, uqs.mastery_status
+		FROM user_question_stats uqs
+		JOIN questions q ON q.subject_id = uqs.subject_id AND q.external_key = uqs.question_key
+		WHERE q.id = ?
+	`, firstQuestionID).Scan(&questionKey, &wrongCount, &masteryStatus); err != nil {
+		t.Fatalf("query user stats failed: %v", err)
+	}
+	if wrongCount != 1 || masteryStatus != "weak" {
+		t.Fatalf("expected weak stat with one wrong answer, got wrong=%d mastery=%q", wrongCount, masteryStatus)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/me/mistakes", nil)
+	req.AddCookie(userCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on mistakes page, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Wrong-Answer Notebook") || !strings.Contains(body, questionKey) {
+		t.Fatalf("expected mistakes page to contain wrong question, got body: %s", body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/me/mistakes/1/%s", questionKey), nil)
+	req.AddCookie(userCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on mistake review, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Mistake Review") || !strings.Contains(rec.Body.String(), "correct") {
+		t.Fatalf("expected review page to show question details, got body: %s", rec.Body.String())
+	}
+}
+
+func TestRegisterClaimRebuildsMistakeStats(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+
+	examID, anonCookie := startExamWithCookie(t, router, 1, nil)
+	if anonCookie == nil {
+		t.Fatal("expected anonymous session cookie after starting exam")
+	}
+	totalQuestions := examQuestionCountForTest(t, examID)
+	firstQuestionID, correctOptionIDs := examQuestionAndCorrectOptions(t, examID, 1)
+	postAnswer(t, router, examID, firstQuestionID, 1, wrongOptionIDs(t, firstQuestionID, correctOptionIDs), totalQuestions == 1)
+	for position := 2; position <= totalQuestions; position++ {
+		questionID, correctIDs := examQuestionAndCorrectOptions(t, examID, position)
+		postAnswer(t, router, examID, questionID, position, correctIDs, position == totalQuestions)
+	}
+
+	registerForm := url.Values{}
+	registerForm.Set("email", "claimed-mistakes@example.com")
+	registerForm.Set("password", "correct-password")
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(registerForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(anonCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 from register, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	userCookie := userSessionCookieFromRecorder(t, rec)
+
+	var statsCount int
+	if err := database.DB.QueryRow(`
+		SELECT COUNT(*)
+		FROM user_question_stats uqs
+		JOIN users u ON u.id = uqs.user_id
+		WHERE u.email = 'claimed-mistakes@example.com' AND uqs.wrong_count > 0
+	`).Scan(&statsCount); err != nil {
+		t.Fatalf("count claimed stats failed: %v", err)
+	}
+	if statsCount != 1 {
+		t.Fatalf("expected one claimed mistake stat, got %d", statsCount)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/me/mistakes", nil)
+	req.AddCookie(userCookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on claimed mistakes page, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Wrong-Answer Notebook") {
+		t.Fatalf("expected claimed mistakes page, got body: %s", rec.Body.String())
+	}
+}
+
 func TestAdminSubjectsAndQuestionsPages(t *testing.T) {
 	setupHandlerTestEnv(t)
 	router := newTestRouter()
@@ -1305,6 +1433,13 @@ func startExam(t *testing.T, router http.Handler, subjectID int) int {
 }
 
 func startExamWithCookie(t *testing.T, router http.Handler, subjectID int, cookie *http.Cookie) (int, *http.Cookie) {
+	if cookie == nil {
+		return startExamWithCookies(t, router, subjectID, nil)
+	}
+	return startExamWithCookies(t, router, subjectID, []*http.Cookie{cookie})
+}
+
+func startExamWithCookies(t *testing.T, router http.Handler, subjectID int, cookies []*http.Cookie) (int, *http.Cookie) {
 	t.Helper()
 
 	form := url.Values{}
@@ -1312,7 +1447,7 @@ func startExamWithCookie(t *testing.T, router http.Handler, subjectID int, cooki
 
 	req := httptest.NewRequest(http.MethodPost, "/exam/start", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if cookie != nil {
+	for _, cookie := range cookies {
 		req.AddCookie(cookie)
 	}
 	rec := httptest.NewRecorder()

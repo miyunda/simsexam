@@ -591,3 +591,37 @@ nav a:hover {
 .compact-textarea {
     min-height: 110px !important;
 }
+
+.stat-value {
+    margin: 8px 0 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--pine);
+}
+
+.review-option {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 15px 20px;
+    background: var(--surface);
+    border: 2px solid var(--overlay);
+    border-radius: 12px;
+}
+
+.review-option.correct-option {
+    border-color: var(--pine);
+    background: var(--highlight-low);
+}
+
+.review-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 24px 0 0;
+}
+
+.review-meta dd {
+    margin: 4px 0 0;
+}

@@ -325,6 +325,9 @@ func claimAnonymousHistoryTx(r *http.Request, tx *sql.Tx, userID int) error {
 	`, userID, sessionID); err != nil {
 		return err
 	}
+	if err := rebuildUserQuestionStatsTx(tx, userID); err != nil {
+		return err
+	}
 	return nil
 }
 
