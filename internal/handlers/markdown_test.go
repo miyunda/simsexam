@@ -22,3 +22,22 @@ func TestRenderMarkdownCodeAndUntrustedContent(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderMarkdownDisablesExplicitHeadingIDs(t *testing.T) {
+	for _, source := range []string{
+		"## Title {#x\"><img/src=x/onerror=alert(1)>}",
+		"Title {#x\"><img/src=x/onerror=alert(1)>}\n---",
+		"## Title {#custom-anchor}",
+	} {
+		got := string(renderMarkdown(source))
+		if strings.Contains(got, "<img") || strings.Contains(got, " id=") {
+			t.Errorf("unsafe or unexpected heading rendering: %s", got)
+		}
+	}
+}
+
+func TestRenderMarkdownPreservesOrdinaryHeadings(t *testing.T) {
+	if got := string(renderMarkdown("## Title")); !strings.Contains(got, "<h2>Title</h2>") {
+		t.Errorf("ordinary heading lost: %s", got)
+	}
+}

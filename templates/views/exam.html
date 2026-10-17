@@ -8,7 +8,8 @@
     </div>
 
     <div class="question-card">
-        <div class="question-text markdown-body">{{markdown .Question.Text}}</div>
+        <h2 id="question-heading">Question {{.CurrentIndex}}</h2>
+        <div class="question-text markdown-body" aria-labelledby="question-heading">{{markdown .Question.Text}}</div>
 
         <form action="/exam/{{.SessionID}}/answer" method="POST" class="options-form">
             <input type="hidden" name="question_id" value="{{.Question.ID}}">

@@ -1876,6 +1876,9 @@ func TestCodeBlocksRenderAcrossLearnerPages(t *testing.T) {
 			t.Fatalf("%s: status %d: %s", path, rec.Code, rec.Body.String())
 		}
 		body := rec.Body.String()
+		if !wantExplanation && !strings.Contains(body, `<h2 id="question-heading">Question 1</h2>`) {
+			t.Error("exam question must have an independent heading")
+		}
 		wants := []string{`<pre><code class="language-json">`, "  &quot;Action&quot;: &quot;iam:Get*&quot;", "  &quot;Action&quot;: &quot;ds:Delete*&quot;", "&lt;option-code&gt;"}
 		if wantExplanation {
 			wants = append(wants, "&lt;explanation-code&gt;")

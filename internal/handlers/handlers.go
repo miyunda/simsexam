@@ -13,6 +13,7 @@ import (
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/ast"
 	markdownhtml "github.com/gomarkdown/markdown/html"
+	"github.com/gomarkdown/markdown/parser"
 )
 
 func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
@@ -47,7 +48,10 @@ func renderMarkdown(source string) template.HTML {
 	renderer := markdownhtml.NewRenderer(markdownhtml.RendererOptions{
 		Flags: markdownhtml.SkipHTML | markdownhtml.SkipImages | markdownhtml.Safelink,
 	})
-	document := markdown.Parse([]byte(source), nil)
+	// Explicit heading IDs are written verbatim by this renderer as well.
+	// Learner content does not need custom anchors.
+	markdownParser := parser.NewWithExtensions(parser.CommonExtensions &^ parser.HeadingIDs)
+	document := markdown.Parse([]byte(source), markdownParser)
 	ast.WalkFunc(document, func(node ast.Node, entering bool) ast.WalkStatus {
 		if code, ok := node.(*ast.CodeBlock); ok && entering {
 			// The library writes language metadata into an HTML attribute verbatim.
