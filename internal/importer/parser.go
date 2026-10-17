@@ -180,9 +180,26 @@ func applyManifestLine(manifest *Manifest, line lineEntry) error {
 func splitQuestionBlocks(lines []lineEntry) [][]lineEntry {
 	var blocks [][]lineEntry
 	var current []lineEntry
+	var fence codeFence
+	seenOption, inExplanation := false, false
 
 	for _, line := range lines {
-		if line.Text == "---" {
+		content := line.Text
+		// Match the two-space option continuation handling in parseQuestionBlock.
+		if seenOption && !inExplanation && strings.HasPrefix(content, "  ") {
+			content = strings.TrimPrefix(content, "  ")
+		} else if fence.marker == 0 {
+			if strings.TrimSpace(content) == "### Explanation" {
+				inExplanation = true
+			} else if !inExplanation {
+				if match := optionRegex.FindStringSubmatch(strings.TrimSpace(content)); match != nil {
+					seenOption = true
+					content = match[2]
+				}
+			}
+		}
+		if !fence.consume(content) && line.Text == "---" {
+			seenOption, inExplanation = false, false
 			if len(current) > 0 {
 				blocks = append(blocks, current)
 				current = nil
@@ -245,10 +262,46 @@ func parseQuestionBlock(lines []lineEntry) (Question, error) {
 	var explanationLines []string
 	inExplanation := false
 	seenOption := false
+	var fence codeFence
+	fenceLine := 0
+	var optionIndentError *ParseError
 
 	for ; i < len(lines); i++ {
 		text := lines[i].Text
 		trimmed := strings.TrimSpace(text)
+
+		// Option continuation lines use two spaces of structural indentation.
+		// Strip only that prefix so code indentation is preserved verbatim.
+		optionContinuation := seenOption && !inExplanation && strings.HasPrefix(text, "  ")
+		content := text
+		if optionContinuation {
+			content = strings.TrimPrefix(text, "  ")
+		}
+		wasInFence := fence.marker != 0
+		if fence.consume(content) {
+			if !wasInFence {
+				fenceLine = lines[i].Number
+			}
+			switch {
+			case inExplanation:
+				explanationLines = append(explanationLines, content)
+			case seenOption:
+				if !optionContinuation && trimmed != "" && optionIndentError == nil {
+					// Defer this error until closure is known, so a missing closing fence
+					// is reported at its opener rather than as misleading indentation.
+					optionIndentError = &ParseError{Line: lines[i].Number, Message: "option code blocks must be indented by two spaces"}
+				}
+				q.Options[len(q.Options)-1].Text += "\n" + content
+			default:
+				stemLines = append(stemLines, content)
+			}
+			continue
+		}
+
+		if optionContinuation {
+			q.Options[len(q.Options)-1].Text += "\n" + content
+			continue
+		}
 
 		if trimmed == "### Explanation" {
 			inExplanation = true
@@ -263,6 +316,9 @@ func parseQuestionBlock(lines []lineEntry) (Question, error) {
 				}
 			}
 			seenOption = true
+			if fence.consume(optionMatch[2]) {
+				fenceLine = lines[i].Number
+			}
 			q.Options = append(q.Options, Option{
 				Text:      strings.TrimSpace(optionMatch[2]),
 				IsCorrect: strings.EqualFold(optionMatch[1], "x"),
@@ -289,8 +345,65 @@ func parseQuestionBlock(lines []lineEntry) (Question, error) {
 		stemLines = append(stemLines, text)
 	}
 
-	q.Stem = strings.TrimSpace(strings.Join(stemLines, "\n"))
-	q.Explanation = strings.TrimSpace(strings.Join(explanationLines, "\n"))
+	if fence.marker != 0 {
+		return Question{}, &ParseError{Line: fenceLine, Message: "unclosed fenced code block"}
+	}
+
+	if optionIndentError != nil {
+		return Question{}, optionIndentError
+	}
+	q.Stem = trimMarkdownLines(stemLines)
+	q.Explanation = trimMarkdownLines(explanationLines)
 
 	return q, nil
+}
+
+// codeFence protects question delimiters and option syntax inside fenced code.
+// A closing fence must match the opening marker and length, as required by
+// the Markdown renderer used by the learner pages.
+type codeFence struct {
+	marker byte
+	length int
+}
+
+func (f *codeFence) consume(line string) bool {
+	// Four spaces introduce indented code, not a fence. Within a fence they
+	// remain literal content and cannot close it. Tabs are not fence prefixes.
+	text := strings.TrimLeft(line, " ")
+	if len(line)-len(text) > 3 {
+		return f.marker != 0
+	}
+	if f.marker != 0 {
+		count := 0
+		for count < len(text) && text[count] == f.marker {
+			count++
+		}
+		if count == f.length && strings.Trim(text[count:], " ") == "" {
+			f.marker, f.length = 0, 0
+		}
+		return true
+	}
+	if len(text) < 3 || (text[0] != '`' && text[0] != '~') {
+		return false
+	}
+	count := 0
+	for count < len(text) && text[count] == text[0] {
+		count++
+	}
+	if count < 3 || (text[0] == '`' && strings.Contains(text[count:], "`")) {
+		return false
+	}
+	f.marker, f.length = text[0], count
+	return true
+}
+
+// Trim blank boundary lines without stripping Markdown-significant indentation.
+func trimMarkdownLines(lines []string) string {
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
 }

@@ -22,13 +22,18 @@
         <div class="review-list">
             {{range .Reviews}}
             <div class="review-item">
-                <h3 class="review-question">Question {{.Number}}: {{.Question}}</h3>
+                <h3 class="review-question">Question {{.Number}}</h3>
+                <div class="markdown-body">{{markdown .Question}}</div>
                 <div class="review-details">
-                    <p class="wrong-answer"><span class="label">Your Answer:</span> {{.UserAnswer}}</p>
-                    <p class="correct-answer"><span class="label">Correct Answer:</span> {{.CorrectAnswer}}</p>
+                    <div class="wrong-answer"><span class="label">Your Answer:</span>
+                        {{range .UserAnswers}}<div class="markdown-body">{{markdown .}}</div>{{else}}(no answer){{end}}
+                    </div>
+                    <div class="correct-answer"><span class="label">Correct Answer:</span>
+                        {{range .CorrectAnswers}}<div class="markdown-body">{{markdown .}}</div>{{end}}
+                    </div>
                     <div class="explanation">
                         <strong>Explanation:</strong>
-                        <div class="explanation-body">{{.Explanation}}</div>
+                        <div class="explanation-body markdown-body">{{markdown .Explanation}}</div>
                     </div>
                 </div>
 

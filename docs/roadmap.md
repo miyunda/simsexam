@@ -73,6 +73,7 @@ Improve the system's ability to manage, review, and correct question-bank conten
   - resolve and dismiss actions
 - remaining: improve importer validation quality and warning clarity
 - remaining: continue refining admin content-editing ergonomics
+- deferred idea: support question images through external image hosting or an existing storage bucket; decide public versus private access later. Image rendering, upload integration, bucket credentials, and signed URLs are outside the code-block rendering iteration.
 
 ### Why This Phase Matters
 

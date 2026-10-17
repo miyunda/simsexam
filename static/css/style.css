@@ -634,3 +634,50 @@ nav a:hover {
     margin-bottom: 0;
     max-width: 420px;
 }
+
+/* Markdown content must shrink inside cards so code scrolls within its block. */
+.markdown-body,
+.question-card,
+.option-content,
+.review-option,
+.review-item {
+    min-width: 0;
+}
+
+.markdown-body {
+    overflow-wrap: anywhere;
+}
+
+.markdown-body > :first-child {
+    margin-top: 0;
+}
+
+.markdown-body > :last-child {
+    margin-bottom: 0;
+}
+
+.markdown-body pre {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.6;
+    white-space: pre;
+    overflow-wrap: normal;
+    tab-size: 4;
+}
+
+.markdown-body code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.markdown-body :not(pre) > code {
+    padding: 0.1em 0.3em;
+    border-radius: 4px;
+    background: var(--surface);
+}

@@ -5,8 +5,15 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"simsexam/internal/buildinfo"
+
+	"github.com/gomarkdown/markdown"
+	"github.com/gomarkdown/markdown/ast"
+	markdownhtml "github.com/gomarkdown/markdown/html"
+	"github.com/gomarkdown/markdown/parser"
 )
 
 func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
@@ -18,6 +25,7 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 
 	ts, err := template.New("base").Funcs(template.FuncMap{
 		"footerVersion": buildinfo.FooterSummary,
+		"markdown":      renderMarkdown,
 	}).ParseFiles(files...)
 	if err != nil {
 		log.Println(err.Error())
@@ -30,4 +38,31 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 		log.Println(err.Error())
 		http.Error(w, "Internal Server Error", 500)
 	}
+}
+
+var codeLanguagePattern = regexp.MustCompile(`^[a-zA-Z0-9_+.#-]+$`)
+
+// Only the renderer's escaped output is trusted. Raw HTML and images remain
+// disabled; image hosting is a separate, deferred feature.
+func renderMarkdown(source string) template.HTML {
+	renderer := markdownhtml.NewRenderer(markdownhtml.RendererOptions{
+		Flags: markdownhtml.SkipHTML | markdownhtml.SkipImages | markdownhtml.Safelink,
+	})
+	// Explicit heading IDs are written verbatim by this renderer as well.
+	// Learner content does not need custom anchors.
+	markdownParser := parser.NewWithExtensions(parser.CommonExtensions &^ parser.HeadingIDs)
+	document := markdown.Parse([]byte(source), markdownParser)
+	ast.WalkFunc(document, func(node ast.Node, entering bool) ast.WalkStatus {
+		if code, ok := node.(*ast.CodeBlock); ok && entering {
+			// The library writes language metadata into an HTML attribute verbatim.
+			// Keep only a simple language identifier before trusting its output.
+			fields := strings.Fields(string(code.Info))
+			code.Info = nil
+			if len(fields) > 0 && codeLanguagePattern.MatchString(fields[0]) {
+				code.Info = []byte(fields[0])
+			}
+		}
+		return ast.GoToNext
+	})
+	return template.HTML(markdown.Render(document, renderer))
 }
