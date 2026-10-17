@@ -8,7 +8,7 @@
     </div>
 
     <div class="question-card">
-        <h2 class="question-text">{{.Question.Text}}</h2>
+        <div class="question-text markdown-body">{{markdown .Question.Text}}</div>
 
         <form action="/exam/{{.SessionID}}/answer" method="POST" class="options-form">
             <input type="hidden" name="question_id" value="{{.Question.ID}}">
@@ -19,9 +19,9 @@
                 <label class="option-card">
                     <input type="{{if eq $.Question.Type "single"}}radio{{else}}checkbox{{end}}" name="option_id" value="{{.ID}}"
                         required>
-                    <span class="option-content">
-                        <span class="option-text">{{.Text}}</span>
-                    </span>
+                    <div class="option-content">
+                        <div class="option-text markdown-body">{{markdown .Text}}</div>
+                    </div>
                 </label>
                 {{end}}
             </div>

@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
-	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"simsexam/internal/database"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/gomarkdown/markdown"
 )
 
 type mistakeNotebookRow struct {
@@ -42,8 +40,7 @@ type mistakeReviewData struct {
 	SubjectTitle   string
 	QuestionKey    string
 	Question       string
-	QuestionHTML   template.HTML
-	Explanation    template.HTML
+	Explanation    string
 	Status         string
 	WrongCount     int
 	CorrectCount   int
@@ -256,8 +253,7 @@ func MistakeReview(cfg config.ServerConfig) http.HandlerFunc {
 		}
 
 		data.Question = cleanQuestionText(questionMarkdown)
-		data.QuestionHTML = template.HTML(markdown.ToHTML([]byte(data.Question), nil, nil))
-		data.Explanation = template.HTML(markdown.ToHTML([]byte(explanationMarkdown), nil, nil))
+		data.Explanation = explanationMarkdown
 
 		optionRows, err := database.DB.Query(`
 			SELECT content_markdown, is_correct

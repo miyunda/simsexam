@@ -180,9 +180,16 @@ func applyManifestLine(manifest *Manifest, line lineEntry) error {
 func splitQuestionBlocks(lines []lineEntry) [][]lineEntry {
 	var blocks [][]lineEntry
 	var current []lineEntry
+	var fence codeFence
 
 	for _, line := range lines {
-		if line.Text == "---" {
+		content := line.Text
+		if fence.marker == 0 {
+			if match := optionRegex.FindStringSubmatch(strings.TrimSpace(content)); match != nil {
+				content = match[2]
+			}
+		}
+		if !fence.consume(content) && line.Text == "---" {
 			if len(current) > 0 {
 				blocks = append(blocks, current)
 				current = nil
@@ -245,10 +252,43 @@ func parseQuestionBlock(lines []lineEntry) (Question, error) {
 	var explanationLines []string
 	inExplanation := false
 	seenOption := false
+	var fence codeFence
+	fenceLine := 0
 
 	for ; i < len(lines); i++ {
 		text := lines[i].Text
 		trimmed := strings.TrimSpace(text)
+
+		// Option continuation lines use two spaces of structural indentation.
+		// Strip only that prefix so code indentation is preserved verbatim.
+		optionContinuation := seenOption && !inExplanation && strings.HasPrefix(text, "  ")
+		content := text
+		if optionContinuation {
+			content = strings.TrimPrefix(text, "  ")
+		}
+		wasInFence := fence.marker != 0
+		if fence.consume(content) {
+			if !wasInFence {
+				fenceLine = lines[i].Number
+			}
+			switch {
+			case inExplanation:
+				explanationLines = append(explanationLines, content)
+			case seenOption:
+				if !optionContinuation && trimmed != "" {
+					return Question{}, &ParseError{Line: lines[i].Number, Message: "option code blocks must be indented by two spaces"}
+				}
+				q.Options[len(q.Options)-1].Text += "\n" + content
+			default:
+				stemLines = append(stemLines, content)
+			}
+			continue
+		}
+
+		if optionContinuation {
+			q.Options[len(q.Options)-1].Text += "\n" + content
+			continue
+		}
 
 		if trimmed == "### Explanation" {
 			inExplanation = true
@@ -263,6 +303,9 @@ func parseQuestionBlock(lines []lineEntry) (Question, error) {
 				}
 			}
 			seenOption = true
+			if fence.consume(optionMatch[2]) {
+				fenceLine = lines[i].Number
+			}
 			q.Options = append(q.Options, Option{
 				Text:      strings.TrimSpace(optionMatch[2]),
 				IsCorrect: strings.EqualFold(optionMatch[1], "x"),
@@ -289,8 +332,46 @@ func parseQuestionBlock(lines []lineEntry) (Question, error) {
 		stemLines = append(stemLines, text)
 	}
 
+	if fence.marker != 0 {
+		return Question{}, &ParseError{Line: fenceLine, Message: "unclosed fenced code block"}
+	}
+
 	q.Stem = strings.TrimSpace(strings.Join(stemLines, "\n"))
 	q.Explanation = strings.TrimSpace(strings.Join(explanationLines, "\n"))
 
 	return q, nil
+}
+
+// codeFence protects question delimiters and option syntax inside fenced code.
+// A closing fence must match the opening marker and length, as required by
+// the Markdown renderer used by the learner pages.
+type codeFence struct {
+	marker byte
+	length int
+}
+
+func (f *codeFence) consume(line string) bool {
+	text := strings.TrimSpace(line)
+	if f.marker != 0 {
+		count := 0
+		for count < len(text) && text[count] == f.marker {
+			count++
+		}
+		if count == f.length && strings.TrimSpace(text[count:]) == "" {
+			f.marker, f.length = 0, 0
+		}
+		return true
+	}
+	if len(text) < 3 || (text[0] != '`' && text[0] != '~') {
+		return false
+	}
+	count := 0
+	for count < len(text) && text[count] == text[0] {
+		count++
+	}
+	if count < 3 || (text[0] == '`' && strings.Contains(text[count:], "`")) {
+		return false
+	}
+	f.marker, f.length = text[0], count
+	return true
 }

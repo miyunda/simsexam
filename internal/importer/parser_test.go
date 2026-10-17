@@ -1,6 +1,9 @@
 package importer
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseStringParsesValidDocument(t *testing.T) {
 	content := `# Subject: se-demo
@@ -92,5 +95,73 @@ This line should not appear after options.
 	_, err := ParseString(content)
 	if err == nil {
 		t.Fatal("expected ParseString to fail")
+	}
+}
+
+func codeQuestionDocument(body string) string {
+	return "# Subject: code-demo\n\n## Meta\n- slug: code-demo\n- title: Code Demo\n- duration_minutes: 20\n- question_count: 1\n- access_level: free\n- status: published\n\n---\n\n## Question\nkey: code-001\ntype: single\n\n" + body
+}
+
+func TestParseFencedCodePreservesQuestionSyntax(t *testing.T) {
+	for _, fence := range []string{"```", "~~~", "````"} {
+		t.Run(fence, func(t *testing.T) {
+			code := fence + "text\n---\n## Question\n### Explanation\n- [x] literal checklist\n  indented code\n```nested\n" + fence + "\n"
+			// An inner shorter fence cannot close a longer fence.
+			if fence == "```" {
+				code = strings.ReplaceAll(code, "```nested\n", "~~~\n")
+			}
+			body := "Read this code:\n\n" + code + "\n- [x] Yes\n- [ ] No\n\n### Explanation\n\n" + code
+			doc, err := ParseString(codeQuestionDocument(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(doc.Questions) != 1 || len(doc.Questions[0].Options) != 2 {
+				t.Fatalf("unexpected structure: %+v", doc)
+			}
+			q := doc.Questions[0]
+			if q.Stem != strings.TrimSpace("Read this code:\n\n"+code) || q.Explanation != strings.TrimSpace(code) {
+				t.Fatalf("code was altered: %+v", q)
+			}
+		})
+	}
+}
+
+func TestParseMultilineCodeOptions(t *testing.T) {
+	for _, firstLine := range []string{"Policy:\n  ```json", "```json"} {
+		t.Run(firstLine, func(t *testing.T) {
+			body := "Choose the policy.\n\n- [x] " + firstLine + "\n  {\n    \"Action\": \"ec2:*\"\n  }\n  ---\n  - [ ] literal\n  ### Explanation\n  ```\n- [ ] Another policy\n\n### Explanation\nCorrect policy."
+			doc, err := ParseString(codeQuestionDocument(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			q := doc.Questions[0]
+			if len(q.Options) != 2 || !q.Options[0].IsCorrect || !strings.Contains(q.Options[0].Text, "\n  \"Action\": \"ec2:*\"\n") || !strings.Contains(q.Options[0].Text, "\n---\n- [ ] literal\n### Explanation\n```") {
+				t.Fatalf("unexpected options: %+v", q.Options)
+			}
+		})
+	}
+}
+
+func TestParseRejectsUnclosedCodeFence(t *testing.T) {
+	for _, body := range []string{
+		"```json\n{}\n- [x] Yes\n- [ ] No",
+		"Question\n- [x] Yes\n- [ ] No\n### Explanation\n~~~\nunclosed",
+		"Question\n- [x] ```json\n  {}\n- [ ] No",
+	} {
+		_, err := ParseString(codeQuestionDocument(body))
+		if err == nil {
+			t.Fatal("expected unterminated or unindented code error")
+		}
+	}
+}
+
+func TestParseFencedCodeFollowedByAnotherQuestion(t *testing.T) {
+	body := "```text\n---\n```\n- [x] Yes\n- [ ] No\n\n---\n\n## Question\nkey: code-002\ntype: single\n\nSecond question.\n- [x] Yes\n- [ ] No"
+	doc, err := ParseString(codeQuestionDocument(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Questions) != 2 {
+		t.Fatalf("expected two questions, got %d", len(doc.Questions))
 	}
 }

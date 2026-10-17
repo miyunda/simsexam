@@ -266,7 +266,7 @@ Optional explanation here.
 
 - MUST 非空
 - 可以包含多行 Markdown
-- MUST 不包含 `### Explanation` 标题
+- 围栏代码块外 MUST 不包含 `### Explanation` 标题
 
 ### 5.4 Options
 
@@ -283,6 +283,8 @@ Optional explanation here.
 - 每题 SHOULD 有 4 个选项
 - 每个选项文本 MUST 非空
 - 选项顺序即展示顺序
+- 多行选项的续行 MUST 使用两个空格作为结构缩进；导入时移除这两个空格，保留后续代码缩进
+- 代码围栏可以放在选项首行，也可以放在缩进续行中；围栏内非空续行同样 MUST 缩进两个空格
 - `single` 题 MUST 恰好有 1 个正确选项
 - `multiple` 题 MUST 至少有 2 个正确选项
 
@@ -300,6 +302,30 @@ Explanation markdown here.
 - MAY 缺省
 - 如果存在，标题 MUST 为 `### Explanation`
 - 内容可以是多行 Markdown
+
+### 5.6 代码块与展示
+
+题干、选项和解析支持 Markdown 围栏代码块，使用三个或更多反引号，或三个或更多 `~`。可以标注 `json`、`text` 等语言；本次仅提供等宽字体与保留缩进的排版，不提供语法高亮或自动格式化。长行在代码块内横向滚动。
+
+答题页、成绩回顾与错题复习使用相同的 Markdown 渲染规则。原始 HTML 不执行，图片暂不渲染；管理后台编辑框与历史记录继续展示 Markdown 源文。
+
+围栏内的 `---`、`## Question`、`### Explanation`、`- [x]` 等内容均为代码，不作为题库结构解析。结束围栏 MUST 使用与起始围栏相同的字符，数量 MUST 与起始围栏一致（与当前 Markdown 渲染器保持一致）；未关闭的围栏导致导入失败，并报告起始行号。
+
+代码选项示例（每个续行前有两个结构缩进空格）：
+
+````md
+- [x] Policy A:
+  ```json
+  {
+    "Effect": "Allow",
+    "Action": "iam:Get*",
+    "Resource": "*"
+  }
+  ```
+- [ ] Policy B
+````
+
+完整的双 Policy 示例见 [code-blocks.md](examples/code-blocks.md)。JSON 的缩进应在准备题库时整理好，应用按原文展示。
 
 ## 6. 解析顺序
 

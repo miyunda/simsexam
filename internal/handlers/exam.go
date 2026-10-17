@@ -3,13 +3,11 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
-	"html/template"
 	"math/rand"
 	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"simsexam/internal/config"
@@ -17,7 +15,6 @@ import (
 	"simsexam/internal/models"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/gomarkdown/markdown"
 )
 
 var questionNumRegex = regexp.MustCompile(`(?i)^(?:question\s+)?\d+[:.]\s+`)
@@ -312,13 +309,13 @@ func ExamResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ReviewItem struct {
-		Number        int
-		QuestionID    int
-		Question      string
-		UserAnswer    string
-		CorrectAnswer string
-		Explanation   template.HTML
-		IsCorrect     bool
+		Number         int
+		QuestionID     int
+		Question       string
+		UserAnswers    []string
+		CorrectAnswers []string
+		Explanation    string
+		IsCorrect      bool
 	}
 	var reviews []ReviewItem
 
@@ -357,15 +354,14 @@ func ExamResult(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to load result", http.StatusInternalServerError)
 			return
 		}
-		htmlBytes := markdown.ToHTML([]byte(explanation), nil, nil)
 		reviews = append(reviews, ReviewItem{
-			Number:        position,
-			QuestionID:    questionID,
-			Question:      cleanQuestionText(qText),
-			UserAnswer:    joinAnswerTexts(userAnswers),
-			CorrectAnswer: joinAnswerTexts(correctAnswers),
-			Explanation:   template.HTML(htmlBytes),
-			IsCorrect:     false,
+			Number:         position,
+			QuestionID:     questionID,
+			Question:       cleanQuestionText(qText),
+			UserAnswers:    userAnswers,
+			CorrectAnswers: correctAnswers,
+			Explanation:    explanation,
+			IsCorrect:      false,
 		})
 	}
 
@@ -593,13 +589,6 @@ func loadReviewAnswers(tx *sql.Tx, examID, questionID int) ([]string, []string, 
 	}
 
 	return userAnswers, correctAnswers, nil
-}
-
-func joinAnswerTexts(values []string) string {
-	if len(values) == 0 {
-		return "(no answer)"
-	}
-	return strings.Join(values, ", ")
 }
 
 func boolToInt(v bool) int {

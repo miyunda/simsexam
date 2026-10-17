@@ -1846,3 +1846,56 @@ func postAnswer(t *testing.T, router http.Handler, examID, questionID, position 
 		t.Fatalf("expected next question redirect %s, got %s", expected, location)
 	}
 }
+
+func TestCodeBlocksRenderAcrossLearnerPages(t *testing.T) {
+	setupHandlerTestEnv(t)
+	router := newTestRouter()
+	userCookie := registerUserForTest(t, router, "code@example.com", "Code Learner")
+	stem := "Policy 1:\n\n```json\n{\n  \"Action\": \"iam:Get*\"\n}\n```\n\nPolicy 2:\n\n```json\n{\n  \"Action\": \"ds:Delete*\"\n}\n```"
+	option := "Policy option:\n\n```text\n<option-code>\n```"
+	explanation := "Explanation:\n\n```text\n<explanation-code>\n```"
+	if _, err := database.DB.Exec(`UPDATE questions SET stem_markdown = ?, explanation_markdown = ?`, stem, explanation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB.Exec(`UPDATE question_options SET content_markdown = ?`, option); err != nil {
+		t.Fatal(err)
+	}
+	examID, _ := startExamWithCookies(t, router, 1, []*http.Cookie{userCookie})
+	questionID, correctIDs := examQuestionAndCorrectOptions(t, examID, 1)
+	var key string
+	if err := database.DB.QueryRow(`SELECT external_key FROM questions WHERE id = ?`, questionID).Scan(&key); err != nil {
+		t.Fatal(err)
+	}
+	checkPage := func(path string, wantExplanation bool) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(userCookie)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", path, rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		wants := []string{`<pre><code class="language-json">`, "  &quot;Action&quot;: &quot;iam:Get*&quot;", "  &quot;Action&quot;: &quot;ds:Delete*&quot;", "&lt;option-code&gt;"}
+		if wantExplanation {
+			wants = append(wants, "&lt;explanation-code&gt;")
+		}
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s missing %q", path, want)
+			}
+		}
+		if strings.Contains(body, "```") || strings.Contains(body, "<option-code>") || strings.Contains(body, "<p><pre>") {
+			t.Errorf("%s: raw code or invalid block wrapping", path)
+		}
+	}
+	checkPage(fmt.Sprintf("/exam/%d/question/1", examID), false)
+	total := examQuestionCountForTest(t, examID)
+	postAnswer(t, router, examID, questionID, 1, wrongOptionIDs(t, questionID, correctIDs), total == 1)
+	for position := 2; position <= total; position++ {
+		id, correct := examQuestionAndCorrectOptions(t, examID, position)
+		postAnswer(t, router, examID, id, position, correct, position == total)
+	}
+	checkPage(fmt.Sprintf("/exam/%d/result", examID), true)
+	checkPage(fmt.Sprintf("/me/mistakes/1/%s", key), true)
+}

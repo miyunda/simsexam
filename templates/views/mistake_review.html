@@ -32,12 +32,12 @@
     {{end}}
 
     <div class="question-card">
-        <div class="question-text">{{.QuestionHTML}}</div>
+        <div class="question-text markdown-body">{{markdown .Question}}</div>
 
         <div class="options-grid">
             {{range .Options}}
             <div class="review-option {{if .IsCorrect}}correct-option{{end}}">
-                <span>{{.Text}}</span>
+                <div class="markdown-body">{{markdown .Text}}</div>
                 {{if .IsCorrect}}<span class="pill">correct</span>{{end}}
             </div>
             {{end}}
@@ -45,7 +45,7 @@
 
         <div class="explanation">
             <strong>Explanation:</strong>
-            <div class="explanation-body">{{.Explanation}}</div>
+            <div class="explanation-body markdown-body">{{markdown .Explanation}}</div>
         </div>
 
         <dl class="review-meta">
