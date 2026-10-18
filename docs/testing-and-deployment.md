@@ -72,6 +72,14 @@ Current GitHub Actions responsibilities:
 - publish CI artifacts and tagged release assets
 - allow manual staging deployment of a selected commit artifact
 
+Runner and artifact baseline:
+
+- CI, Release, and Deploy Staging use `ubuntu-24.04` to avoid implicit operating-system upgrades through `ubuntu-latest`.
+- JavaScript actions use releases that explicitly support the Node.js 24 Actions runtime. The Go version continues to come from `go.mod`.
+- CI and Release build on the same Ubuntu baseline because `go-sqlite3` uses CGO. These binaries may depend on the build system's glibc; validate them on the target Linux hosts before changing the build baseline. Pinning Ubuntu 24.04 does not guarantee compatibility with older distributions.
+- CI uploads a ZIP-wrapped artifact named `simsexam-commit-<full SHA>` containing the release tarball and checksum file. Keep `archive: true`: Staging locates the artifact by workflow, commit SHA, and name, then extracts its contents into `dist`.
+- When upgrading artifact actions, verify upload and download together, check the tarball checksum, and smoke-test the packaged binaries on the target Linux host.
+
 Current GitHub Actions does not do:
 
 - deploy to production automatically
